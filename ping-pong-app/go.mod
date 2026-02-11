@@ -1,15 +1,14 @@
-mkdir ping-pong-app && cd ping-pong-app
-go mod init github.com/yourname/ping-pong-app
+module ping-pong-app
 
-# Core libp2p deps + relay + websocket
-go get github.com/libp2p/go-libp2p@v0.34.0 \
-     github.com/libp2p/go-libp2p-pnet@v0.2.0 \
-     github.com/libp2p/go-libp2p-peerstore@v0.5.0 \
-     github.com/libp2p/go-libp2p-transport-upgrader@v0.6.0 \
-     github.com/libp2p/go-libp2p-circuit-v2@v0.3.0 \
-     github.com/libp2p/go-libp2p-quic-transport@v1.14.0 \
-     github.com/libp2p/go-libp2p-ws-transport@v1.0.0 \
-     github.com/libp2p/go-libp2p-tls@v1.0.0 \
-     github.com/libp2p/go-libp2p-mplex@v0.5.0 \
-     github.com/multiformats/go-multiaddr@v1.6.0 \
-     github.com/multiformats/go-multiaddr-net@v1.3.1
+go 1.23
+
+require (
+     github.com/libp2p/go-libp2p v0.37.4
+     github.com/libp2p/go-libp2p-kad-dht v0.26.1
+     golang.org/x/net v0.33.0 // for IPv6 support (e.g., dialing ws+tcp)
+)
+
+require (
+     // indirect deps (go mod tidy will fetch them)
+     github.com/libp2p/go-libp2p-pipe v0.0.0 // not needed but avoids warnings
+)
