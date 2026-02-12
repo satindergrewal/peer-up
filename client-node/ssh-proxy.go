@@ -131,14 +131,10 @@ func handleSSHConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, localCo
 		errCh <- err
 	}()
 
-	// Wait for first direction to finish
+	// Wait for both directions to finish
+	<-errCh
 	<-errCh
 
-	// Close connections to trigger cleanup
-	// (deferred Close() will handle actual cleanup)
-
-	// Wait for second direction to finish
-	<-errCh
-
+	// Connections will be closed by deferred Close() calls
 	fmt.Println("🔌 SSH connection closed")
 }

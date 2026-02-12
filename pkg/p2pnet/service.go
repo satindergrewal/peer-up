@@ -113,15 +113,13 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 			errCh <- err
 		}()
 
-		// Wait for first error (one direction finished)
+		// Wait for both directions to finish
+		<-errCh
 		<-errCh
 
-		// Close connections to trigger the other direction to finish
+		// Now safe to close connections
 		localConn.Close()
 		s.Close()
-
-		// Wait for the second direction to finish
-		<-errCh
 
 		log.Printf("✅ Closed %s connection from %s", svc.Name, remotePeer.String()[:16]+"...")
 	}
