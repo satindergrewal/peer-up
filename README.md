@@ -309,14 +309,137 @@ sudo systemctl status relay-server
 - **Starlink symmetric NAT**: DCUtR often fails, relay remains in use
 - **Workaround**: Place Starlink router in bypass mode + custom router with IPv6 firewall configuration
 
+## keytool - Key Management Utility
+
+The `keytool` CLI utility helps manage Ed25519 keypairs and authorized_keys files.
+
+### Building keytool
+
+```bash
+cd cmd/keytool
+go build -o keytool
+```
+
+### Commands
+
+#### 1. Generate Keypair
+
+```bash
+# Generate new Ed25519 keypair
+keytool generate <output-path> [--force]
+
+# Example
+keytool generate my-node.key
+
+# Output:
+# ✓ Generated new Ed25519 keypair
+#   Saved to: my-node.key
+#   Peer ID:  12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL
+#   Short:    12D3KooWLCavCP1...
+```
+
+#### 2. Extract Peer ID
+
+```bash
+# Extract peer ID from key file
+keytool peerid <key-file>
+
+# Example
+keytool peerid home_node.key
+
+# Output:
+# Key file: home_node.key
+# Peer ID:  12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL
+# Short:    12D3KooWLCavCP1...
+```
+
+#### 3. Validate authorized_keys
+
+```bash
+# Validate authorized_keys file format
+keytool validate <authorized_keys>
+
+# Example
+keytool validate authorized_keys
+
+# Output (success):
+# ✓ Validation passed
+#   Valid peer IDs: 3
+
+# Output (error):
+# ✗ Validation failed with 1 error(s):
+#   Line 5: invalid peer ID format - ...
+```
+
+#### 4. Authorize Peer
+
+```bash
+# Add peer to authorized_keys
+keytool authorize <peer-id> [--file authorized_keys] [--comment "description"]
+
+# Example
+keytool authorize 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL \
+    --comment "laptop" --file authorized_keys
+
+# Output:
+# ✓ Authorized peer: 12D3KooWLCavCP1...
+#   Comment: laptop
+#   File: authorized_keys
+```
+
+#### 5. Revoke Peer
+
+```bash
+# Remove peer from authorized_keys
+keytool revoke <peer-id> [--file authorized_keys]
+
+# Example
+keytool revoke 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL \
+    --file authorized_keys
+
+# Output:
+# ✓ Revoked peer: 12D3KooWLCavCP1...
+#   File: authorized_keys
+```
+
+### Common Workflows
+
+**Initial Setup:**
+```bash
+# 1. Generate key for home-node
+keytool generate home-node.key
+
+# 2. Generate key for client-node
+keytool generate client-node.key
+
+# 3. Extract peer IDs
+keytool peerid client-node.key
+
+# 4. Add client to home-node's authorized_keys
+keytool authorize <CLIENT_PEER_ID> --comment "my-phone" --file home-node-authorized_keys
+```
+
+**Managing Access:**
+```bash
+# Add multiple peers
+keytool authorize 12D3KooW... --comment "laptop"
+keytool authorize 12D3KooW... --comment "phone"
+
+# Validate before deploying
+keytool validate authorized_keys
+
+# Remove access
+keytool revoke 12D3KooW... --file authorized_keys
+```
+
 ## Future Enhancements (Phase 3+)
 
 ### Phase 3: Enhanced Usability
-- [ ] `keytool` utility for key management
-  - Generate keypairs
-  - Extract peer ID from key file
-  - Validate authorized_keys file
-  - Add/remove authorized peers
+- [x] ✅ `keytool` utility for key management
+  - [x] Generate keypairs
+  - [x] Extract peer ID from key file
+  - [x] Validate authorized_keys file
+  - [x] Add/remove authorized peers
 - [ ] Config validation CLI flag (`--validate-config`)
 - [ ] Hot-reload for `authorized_keys` (using file watcher)
 
@@ -333,10 +456,16 @@ sudo systemctl status relay-server
 
 ## Dependencies
 
-- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.38.2
+**Core:**
+- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.38.2 (home/client/relay nodes)
+- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.47.0 (keytool)
 - [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.28.1
-- [go-multiaddr](https://github.com/multiformats/go-multiaddr) v0.14.0
+- [go-multiaddr](https://github.com/multiformats/go-multiaddr) v0.14.0+
 - [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) v3.0.1
+
+**keytool specific:**
+- [urfave/cli](https://github.com/urfave/cli) v1.22.17
+- [fatih/color](https://github.com/fatih/color) v1.18.0
 
 ## License
 

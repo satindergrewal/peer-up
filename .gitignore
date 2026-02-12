@@ -10,6 +10,7 @@
 
 # Built executables
 client-node/client-node
+cmd/keytool/keytool
 home-node/home-node
 relay-server/relay-server
 
