@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/satindergrewal/peer-up/internal/config"
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
@@ -56,8 +57,25 @@ func main() {
 	fmt.Println()
 
 	fmt.Println("🔗 Connecting to home peer...")
-	// Wait a moment for DHT/relay to establish
-	// In production, use proper peer discovery
+
+	// Add home peer's relay addresses to peerstore
+	// This allows the client to reach the home-node through the relay
+	h := p2pNetwork.Host()
+	for _, relayAddr := range cfg.Relay.Addresses {
+		// Construct relay circuit address: /ip4/.../tcp/.../p2p/<relay>/p2p-circuit/p2p/<home-peer>
+		circuitAddr := relayAddr + "/p2p-circuit/p2p/" + homePeerID.String()
+		fmt.Printf("📍 Adding home peer relay address: %s\n", circuitAddr)
+
+		// Parse the multiaddr and add to peerstore
+		addrInfo, err := peer.AddrInfoFromString(circuitAddr)
+		if err != nil {
+			log.Printf("⚠️  Failed to parse relay address: %v", err)
+			continue
+		}
+
+		h.Peerstore().AddAddrs(addrInfo.ID, addrInfo.Addrs, peerstore.PermanentAddrTTL)
+	}
+	fmt.Println()
 
 	// Create local TCP listener
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", localPort))
