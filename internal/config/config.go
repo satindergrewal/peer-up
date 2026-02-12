@@ -1,0 +1,83 @@
+package config
+
+import (
+	"time"
+)
+
+// HomeNodeConfig represents configuration for the home node
+type HomeNodeConfig struct {
+	Identity  IdentityConfig  `yaml:"identity"`
+	Network   NetworkConfig   `yaml:"network"`
+	Relay     RelayConfig     `yaml:"relay"`
+	Discovery DiscoveryConfig `yaml:"discovery"`
+	Security  SecurityConfig  `yaml:"security"`
+	Protocols ProtocolsConfig `yaml:"protocols"`
+}
+
+// ClientNodeConfig represents configuration for the client node
+type ClientNodeConfig struct {
+	Identity  IdentityConfig  `yaml:"identity"`
+	Network   NetworkConfig   `yaml:"network"`
+	Relay     RelayConfig     `yaml:"relay"`
+	Discovery DiscoveryConfig `yaml:"discovery"`
+	Security  SecurityConfig  `yaml:"security"`
+	Protocols ProtocolsConfig `yaml:"protocols"`
+}
+
+// RelayServerConfig represents configuration for the relay server
+type RelayServerConfig struct {
+	Identity IdentityConfig       `yaml:"identity"`
+	Network  RelayNetworkConfig   `yaml:"network"`
+	Security RelaySecurityConfig  `yaml:"security"`
+}
+
+// IdentityConfig holds identity-related configuration
+type IdentityConfig struct {
+	KeyFile string `yaml:"key_file"`
+}
+
+// NetworkConfig holds network-related configuration
+type NetworkConfig struct {
+	ListenAddresses          []string `yaml:"listen_addresses"`
+	ForcePrivateReachability bool     `yaml:"force_private_reachability"`
+}
+
+// RelayNetworkConfig holds relay server network configuration
+type RelayNetworkConfig struct {
+	ListenAddresses []string `yaml:"listen_addresses"`
+}
+
+// RelayConfig holds relay-related configuration
+type RelayConfig struct {
+	Addresses           []string      `yaml:"addresses"`
+	ReservationInterval time.Duration `yaml:"reservation_interval"`
+}
+
+// DiscoveryConfig holds DHT discovery configuration
+type DiscoveryConfig struct {
+	Rendezvous     string   `yaml:"rendezvous"`
+	BootstrapPeers []string `yaml:"bootstrap_peers"`
+}
+
+// SecurityConfig holds security-related configuration
+type SecurityConfig struct {
+	AuthorizedKeysFile     string `yaml:"authorized_keys_file"`
+	EnableConnectionGating bool   `yaml:"enable_connection_gating"`
+}
+
+// RelaySecurityConfig holds relay server security configuration
+type RelaySecurityConfig struct {
+	AuthorizedKeysFile     string `yaml:"authorized_keys_file"`
+	EnableConnectionGating bool   `yaml:"enable_connection_gating"`
+}
+
+// ProtocolsConfig holds protocol-specific configuration
+type ProtocolsConfig struct {
+	PingPong PingPongConfig `yaml:"ping_pong"`
+}
+
+// PingPongConfig holds ping-pong protocol configuration
+type PingPongConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	ID      string `yaml:"id"`
+}

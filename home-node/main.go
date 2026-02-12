@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	circuitv2client "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 
@@ -24,20 +25,10 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	ma "github.com/multiformats/go-multiaddr"
+
+	"github.com/satindergrewal/peer-up/internal/auth"
+	"github.com/satindergrewal/peer-up/internal/config"
 )
-
-const PingPongProtocol = "/pingpong/1.0.0"
-const Rendezvous = "khoji-pingpong-demo"
-
-// *** CHANGE THIS to your Linode relay's multiaddr after deploying ***
-// Format: /ip4/<LINODE_IP>/tcp/4001/p2p/<RELAY_PEER_ID>
-// You'll also want the QUIC and IPv6 variants
-var relayAddrs = []string{
-	"/ip4/LINODE_IPV4/tcp/4001/p2p/RELAY_PEER_ID",
-	"/ip4/LINODE_IPV4/udp/4001/quic-v1/p2p/RELAY_PEER_ID",
-	"/ip6/LINODE_IPV6/tcp/4001/p2p/RELAY_PEER_ID",
-	"/ip6/LINODE_IPV6/udp/4001/quic-v1/p2p/RELAY_PEER_ID",
-}
 
 // Persistent identity — saves/loads a key so your Peer ID stays the same across restarts
 func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
@@ -65,35 +56,89 @@ func main() {
 	fmt.Println("=== Home Node (Pong Responder) ===")
 	fmt.Println()
 
+	// Load configuration
+	cfg, err := config.LoadHomeNodeConfig("home-node.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v\n", err)
+		fmt.Println("Please create home-node.yaml from the sample:")
+		fmt.Println("  cp configs/home-node.sample.yaml home-node.yaml")
+		fmt.Println("  # Edit the file with your relay server details")
+		os.Exit(1)
+	}
+
+	// Validate configuration
+	if err := config.ValidateHomeNodeConfig(cfg); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
+	fmt.Printf("Loaded configuration from home-node.yaml\n")
+	fmt.Printf("Rendezvous: %s\n", cfg.Discovery.Rendezvous)
+	fmt.Println()
+
 	// Load or create persistent identity
-	priv, err := loadOrCreateIdentity("home_node.key")
+	priv, err := loadOrCreateIdentity(cfg.Identity.KeyFile)
 	if err != nil {
 		log.Fatalf("Identity error: %v", err)
 	}
 
-	// Create the libp2p host
-	h, err := libp2p.New(
+	// Parse relay addresses
+	relayInfos := parseRelayAddrs(cfg.Relay.Addresses)
+
+	// Load authorized keys if connection gating is enabled
+	var gater *auth.AuthorizedPeerGater
+	if cfg.Security.EnableConnectionGating {
+		if cfg.Security.AuthorizedKeysFile == "" {
+			log.Fatalf("Connection gating enabled but no authorized_keys_file specified")
+		}
+
+		authorizedPeers, err := auth.LoadAuthorizedKeys(cfg.Security.AuthorizedKeysFile)
+		if err != nil {
+			log.Fatalf("Failed to load authorized keys: %v", err)
+		}
+
+		if len(authorizedPeers) == 0 {
+			fmt.Println("⚠️  WARNING: authorized_keys file is empty - no peers will be able to connect!")
+			fmt.Printf("   Add peer IDs to %s to allow connections\n", cfg.Security.AuthorizedKeysFile)
+		} else {
+			fmt.Printf("✅ Loaded %d authorized peer(s) from %s\n", len(authorizedPeers), cfg.Security.AuthorizedKeysFile)
+		}
+
+		gater = auth.NewAuthorizedPeerGater(authorizedPeers, log.Default())
+	} else {
+		fmt.Println("⚠️  WARNING: Connection gating is DISABLED - any peer can connect!")
+	}
+	fmt.Println()
+
+	// Build libp2p host options
+	hostOpts := []libp2p.Option{
 		libp2p.Identity(priv),
-		libp2p.ListenAddrStrings(
-			"/ip4/0.0.0.0/tcp/9100",
-			"/ip4/0.0.0.0/udp/9100/quic-v1",
-			"/ip6/::/tcp/9100",
-			"/ip6/::/udp/9100/quic-v1",
-		),
+		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.NATPortMap(),
 		libp2p.EnableHolePunching(),
-		libp2p.EnableAutoRelayWithStaticRelays(parseRelayAddrs()),
-		libp2p.ForceReachabilityPrivate(), // Tell libp2p we're behind NAT — triggers relay usage
-	)
+		libp2p.EnableAutoRelayWithStaticRelays(relayInfos),
+	}
+
+	// Add connection gater if enabled
+	if gater != nil {
+		hostOpts = append(hostOpts, libp2p.ConnectionGater(gater))
+	}
+
+	// Force private reachability if configured
+	if cfg.Network.ForcePrivateReachability {
+		hostOpts = append(hostOpts, libp2p.ForceReachabilityPrivate())
+	}
+
+	// Create the libp2p host
+	h, err := libp2p.New(hostOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create host: %v", err)
 	}
 	defer h.Close()
 
 	// Connect to the relay
-	for _, ai := range parseRelayAddrs() {
+	for _, ai := range relayInfos {
 		if err := h.Connect(ctx, ai); err != nil {
 			fmt.Printf("⚠️  Could not connect to relay %s: %v\n", ai.ID.String()[:16], err)
 		} else {
@@ -115,7 +160,7 @@ func main() {
 	}
 	if !hasRelay {
 		fmt.Println("⚠️  No relay addresses yet — trying manual reservation...")
-		for _, ai := range parseRelayAddrs() {
+		for _, ai := range relayInfos {
 			_, err := circuitv2client.Reserve(ctx, h, ai)
 			if err != nil {
 				fmt.Printf("⚠️  Manual reservation failed: %v\n", err)
@@ -128,8 +173,8 @@ func main() {
 	// Keep reservation alive
 	go func() {
 		for {
-			time.Sleep(2 * time.Minute)
-			for _, ai := range parseRelayAddrs() {
+			time.Sleep(cfg.Relay.ReservationInterval)
+			for _, ai := range relayInfos {
 				h.Connect(ctx, ai)
 				circuitv2client.Reserve(ctx, h, ai)
 			}
@@ -140,8 +185,17 @@ func main() {
 	fmt.Println()
 
 	// Set up the ping-pong handler
-	h.SetStreamHandler(PingPongProtocol, func(s network.Stream) {
+	h.SetStreamHandler(protocol.ID(cfg.Protocols.PingPong.ID), func(s network.Stream) {
 		remotePeer := s.Conn().RemotePeer()
+
+		// Defense-in-depth: Protocol-level authorization check
+		if cfg.Security.EnableConnectionGating && gater != nil && !gater.IsAuthorized(remotePeer) {
+			fmt.Printf("\n🚫 DENIED: Unauthorized peer attempted protocol access: %s\n", remotePeer.String()[:16])
+			s.Write([]byte("unauthorized\n"))
+			s.Close()
+			return
+		}
+
 		connType := "unknown"
 		if s.Conn().Stat().Limited {
 			connType = "RELAYED"
@@ -181,7 +235,22 @@ func main() {
 	}
 
 	// Connect to bootstrap peers
-	bootstrapPeers := dht.DefaultBootstrapPeers
+	var bootstrapPeers []ma.Multiaddr
+	if len(cfg.Discovery.BootstrapPeers) > 0 {
+		// Use custom bootstrap peers from config
+		for _, addr := range cfg.Discovery.BootstrapPeers {
+			maddr, err := ma.NewMultiaddr(addr)
+			if err != nil {
+				fmt.Printf("⚠️  Invalid bootstrap peer %s: %v\n", addr, err)
+				continue
+			}
+			bootstrapPeers = append(bootstrapPeers, maddr)
+		}
+	} else {
+		// Use default libp2p bootstrap peers
+		bootstrapPeers = dht.DefaultBootstrapPeers
+	}
+
 	var wg sync.WaitGroup
 	connected := 0
 	for _, pAddr := range bootstrapPeers {
@@ -202,12 +271,12 @@ func main() {
 
 	// Advertise ourselves on the DHT using a rendezvous string
 	routingDiscovery := drouting.NewRoutingDiscovery(kdht)
-	fmt.Printf("Advertising on rendezvous: %s\n", Rendezvous)
+	fmt.Printf("Advertising on rendezvous: %s\n", cfg.Discovery.Rendezvous)
 
 	// Keep advertising in the background
 	go func() {
 		for {
-			_, err := routingDiscovery.Advertise(ctx, Rendezvous)
+			_, err := routingDiscovery.Advertise(ctx, cfg.Discovery.Rendezvous)
 			if err != nil {
 				fmt.Printf("Advertise error: %v\n", err)
 			}
@@ -255,7 +324,7 @@ func main() {
 	fmt.Println("\nShutting down...")
 }
 
-func parseRelayAddrs() []peer.AddrInfo {
+func parseRelayAddrs(relayAddrs []string) []peer.AddrInfo {
 	var infos []peer.AddrInfo
 	seen := make(map[peer.ID]bool)
 	for _, s := range relayAddrs {

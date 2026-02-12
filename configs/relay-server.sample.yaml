@@ -1,0 +1,27 @@
+# Relay Server Configuration
+# This server runs on a VPS with a public IP
+# It relays connections between home and client nodes
+
+identity:
+  # Path to the key file for persistent peer identity
+  # This file will be created automatically if it doesn't exist
+  # IMPORTANT: Keep this file backed up - your peer ID depends on it
+  key_file: "relay_node.key"
+
+network:
+  # Addresses to listen on
+  # Use port 7777 (non-standard to avoid IPFS swarms)
+  # Make sure this port is open in your firewall (ufw allow 7777/tcp)
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/7777"
+    - "/ip6/::/tcp/7777"
+
+security:
+  # Path to authorized_keys file (for future use)
+  # Currently not enforced - relay is open to all connections
+  # In the future, only peers in this file will be allowed to make reservations
+  authorized_keys_file: "relay_authorized_keys"
+
+  # Enable connection gating (currently disabled for simplicity)
+  # Set to true once you want to restrict relay usage to authorized peers only
+  enable_connection_gating: false

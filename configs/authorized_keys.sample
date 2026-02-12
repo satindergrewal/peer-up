@@ -1,0 +1,16 @@
+# Authorized Peers
+#
+# This file lists peer IDs that are allowed to connect to this node.
+# Format: one peer ID per line, with optional comments after a # symbol
+#
+# To get a peer's ID:
+#   1. Run the peer node once to generate its key file
+#   2. Look for the "Peer ID:" line in the output
+#   3. Or use: peerup-keytool peerid --key <keyfile>
+#
+# Examples:
+# 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL  # my-laptop
+# 12D3KooWBhJ4zXm2YmKjH3w3DJJ7CyqJy4J4J4J4J4J4J4J4J4J   # my-phone
+# 12D3KooWPjceQrSwdWXPyLLeABRXmuqt69Rg3sBYUXCUVwbj7QbA  # home-server
+
+# Add your authorized peer IDs below (one per line):

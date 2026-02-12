@@ -1,0 +1,59 @@
+# Home Node Configuration
+# This node runs on your home computer behind NAT/CGNAT
+# It advertises itself on the DHT and responds to ping-pong requests
+
+identity:
+  # Path to the key file for persistent peer identity
+  # This file will be created automatically if it doesn't exist
+  key_file: "home_node.key"
+
+network:
+  # Addresses to listen on for incoming connections
+  # Port 9100 is used by default
+  # Use ephemeral port (0) for dynamic assignment
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/9100"
+    - "/ip4/0.0.0.0/udp/9100/quic-v1"
+    - "/ip6/::/tcp/9100"
+    - "/ip6/::/udp/9100/quic-v1"
+
+  # Force libp2p to treat this node as private (behind NAT)
+  # This is critical for relay reservation to work properly
+  # Set to false only if you have a public IP
+  force_private_reachability: true
+
+relay:
+  # Addresses of relay servers to use for NAT traversal
+  # Format: /ip4/<IP>/tcp/<PORT>/p2p/<RELAY_PEER_ID>
+  # You MUST update these after deploying your relay server
+  addresses:
+    - "/ip4/YOUR_VPS_IP/tcp/7777/p2p/YOUR_RELAY_PEER_ID"
+    # - "/ip6/YOUR_VPS_IPV6/tcp/7777/p2p/YOUR_RELAY_PEER_ID"
+
+  # How often to renew relay reservations (default: 2 minutes)
+  reservation_interval: "2m"
+
+discovery:
+  # Rendezvous string for DHT discovery
+  # Clients will search for this string to find your home node
+  # Change this to create a private namespace
+  rendezvous: "my-private-p2p-network"
+
+  # Optional: Custom bootstrap peers for DHT
+  # Leave empty to use libp2p default bootstrap peers
+  bootstrap_peers: []
+
+security:
+  # Path to authorized_keys file (SSH-style)
+  # Only peers listed in this file can connect
+  authorized_keys_file: "authorized_keys"
+
+  # Enable connection gating (recommended: true)
+  # When enabled, only authorized peers can connect
+  enable_connection_gating: true
+
+protocols:
+  # Ping-pong protocol configuration
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"

@@ -12,6 +12,8 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
+
+	"github.com/satindergrewal/peer-up/internal/config"
 )
 
 func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
@@ -40,7 +42,25 @@ func main() {
 	fmt.Println("=== Private libp2p Relay Server ===")
 	fmt.Println()
 
-	priv, err := loadOrCreateIdentity("relay_node.key")
+	// Load configuration
+	cfg, err := config.LoadRelayServerConfig("relay-server.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v\n", err)
+		fmt.Println("Please create relay-server.yaml from the sample:")
+		fmt.Println("  cp configs/relay-server.sample.yaml relay-server.yaml")
+		os.Exit(1)
+	}
+
+	// Validate configuration
+	if err := config.ValidateRelayServerConfig(cfg); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
+	fmt.Printf("Loaded configuration from relay-server.yaml\n")
+	fmt.Printf("Authentication: %v\n", cfg.Security.EnableConnectionGating)
+	fmt.Println()
+
+	priv, err := loadOrCreateIdentity(cfg.Identity.KeyFile)
 	if err != nil {
 		log.Fatalf("Identity error: %v", err)
 	}
@@ -48,10 +68,7 @@ func main() {
 	// Create a basic host first — no relay options
 	h, err := libp2p.New(
 		libp2p.Identity(priv),
-		libp2p.ListenAddrStrings(
-			"/ip4/0.0.0.0/tcp/7777",
-			"/ip6/::/tcp/7777",
-		),
+		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create host: %v", err)

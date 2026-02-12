@@ -27,3 +27,10 @@ go.work.sum
 
 # Testing and archived files
 archived/
+
+# Configuration files (keep only samples in repo)
+*.yaml
+!*.sample.yaml
+authorized_keys
+relay_authorized_keys
+!configs/*.sample.yaml
