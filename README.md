@@ -4,12 +4,12 @@ A production-ready libp2p-based system for connecting devices across CGNAT netwo
 
 ## Features
 
-✅ **Configuration-Based** - YAML config files, no hardcoded values, no recompilation needed
-✅ **SSH-Style Authentication** - `authorized_keys` file for peer access control
-✅ **NAT Traversal** - Works through Starlink CGNAT using relay + hole-punching
-✅ **Persistent Identity** - Ed25519 keypairs saved to files
-✅ **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
-✅ **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P after relay connection
+- ✅ **Configuration-Based** - YAML config files, no hardcoded values, no recompilation needed
+- ✅ **SSH-Style Authentication** - `authorized_keys` file for peer access control
+- ✅ **NAT Traversal** - Works through Starlink CGNAT using relay + hole-punching
+- ✅ **Persistent Identity** - Ed25519 keypairs saved to files
+- ✅ **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
+- ✅ **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P after relay connection
 
 ## The Problem
 

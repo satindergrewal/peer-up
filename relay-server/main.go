@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 
+	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 )
 
@@ -65,11 +66,44 @@ func main() {
 		log.Fatalf("Identity error: %v", err)
 	}
 
-	// Create a basic host first — no relay options
-	h, err := libp2p.New(
+	// Load authorized keys if connection gating is enabled
+	var gater *auth.AuthorizedPeerGater
+	if cfg.Security.EnableConnectionGating {
+		if cfg.Security.AuthorizedKeysFile == "" {
+			log.Fatalf("Connection gating enabled but no authorized_keys_file specified")
+		}
+
+		authorizedPeers, err := auth.LoadAuthorizedKeys(cfg.Security.AuthorizedKeysFile)
+		if err != nil {
+			log.Fatalf("Failed to load authorized keys: %v", err)
+		}
+
+		if len(authorizedPeers) == 0 {
+			fmt.Println("⚠️  WARNING: authorized_keys file is empty - no peers can make reservations!")
+			fmt.Printf("   Add authorized peer IDs to %s\n", cfg.Security.AuthorizedKeysFile)
+		} else {
+			fmt.Printf("✅ Loaded %d authorized peer(s) from %s\n", len(authorizedPeers), cfg.Security.AuthorizedKeysFile)
+		}
+
+		gater = auth.NewAuthorizedPeerGater(authorizedPeers, log.Default())
+	} else {
+		fmt.Println("⚠️  WARNING: Connection gating is DISABLED - any peer can use this relay!")
+	}
+	fmt.Println()
+
+	// Build host options
+	hostOpts := []libp2p.Option{
 		libp2p.Identity(priv),
 		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
-	)
+	}
+
+	// Add connection gater if enabled
+	if gater != nil {
+		hostOpts = append(hostOpts, libp2p.ConnectionGater(gater))
+	}
+
+	// Create a basic host first — no relay options
+	h, err := libp2p.New(hostOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create host: %v", err)
 	}
