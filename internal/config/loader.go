@@ -26,6 +26,8 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 		Discovery DiscoveryConfig `yaml:"discovery"`
 		Security  SecurityConfig  `yaml:"security"`
 		Protocols ProtocolsConfig `yaml:"protocols"`
+		Services  ServicesConfig  `yaml:"services,omitempty"`
+		Names     NamesConfig     `yaml:"names,omitempty"`
 	}
 
 	if err := yaml.Unmarshal(data, &rawConfig); err != nil {
@@ -44,6 +46,8 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 		Discovery: rawConfig.Discovery,
 		Security:  rawConfig.Security,
 		Protocols: rawConfig.Protocols,
+		Services:  rawConfig.Services,
+		Names:     rawConfig.Names,
 		Relay: RelayConfig{
 			Addresses:           rawConfig.Relay.Addresses,
 			ReservationInterval: reservationInterval,
@@ -71,6 +75,7 @@ func LoadClientNodeConfig(path string) (*ClientNodeConfig, error) {
 		Discovery DiscoveryConfig `yaml:"discovery"`
 		Security  SecurityConfig  `yaml:"security"`
 		Protocols ProtocolsConfig `yaml:"protocols"`
+		Names     NamesConfig     `yaml:"names,omitempty"`
 	}
 
 	if err := yaml.Unmarshal(data, &rawConfig); err != nil {
@@ -89,6 +94,7 @@ func LoadClientNodeConfig(path string) (*ClientNodeConfig, error) {
 		Discovery: rawConfig.Discovery,
 		Security:  rawConfig.Security,
 		Protocols: rawConfig.Protocols,
+		Names:     rawConfig.Names,
 		Relay: RelayConfig{
 			Addresses:           rawConfig.Relay.Addresses,
 			ReservationInterval: reservationInterval,
