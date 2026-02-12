@@ -8,6 +8,10 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ma "github.com/multiformats/go-multiaddr"
+
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 )
@@ -27,6 +31,13 @@ type Config struct {
 	KeyFile         string
 	AuthorizedKeys  string
 	Config          *config.Config
+
+	// Relay configuration (optional)
+	EnableRelay         bool              // Enable relay support (AutoRelay + hole punching)
+	RelayAddrs          []string          // Relay server multiaddrs (e.g., "/ip4/1.2.3.4/tcp/7777/p2p/12D3Koo...")
+	ForcePrivate        bool              // Force private reachability (required for relay reservations)
+	EnableNATPortMap    bool              // Enable NAT port mapping
+	EnableHolePunching  bool              // Enable hole punching
 }
 
 // New creates a new P2P network instance
@@ -47,11 +58,39 @@ func New(cfg *Config) (*Network, error) {
 	// Create libp2p host options
 	hostOpts := []libp2p.Option{
 		libp2p.Identity(priv),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(libp2pquic.NewTransport),
 	}
 
 	// Add listen addresses if configured
 	if cfg.Config != nil && len(cfg.Config.Network.ListenAddresses) > 0 {
 		hostOpts = append(hostOpts, libp2p.ListenAddrStrings(cfg.Config.Network.ListenAddresses...))
+	}
+
+	// Add relay support if enabled
+	if cfg.EnableRelay {
+		// Parse relay addresses
+		relayInfos, err := parseRelayAddrs(cfg.RelayAddrs)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to parse relay addresses: %w", err)
+		}
+
+		if len(relayInfos) > 0 {
+			hostOpts = append(hostOpts, libp2p.EnableAutoRelayWithStaticRelays(relayInfos))
+		}
+
+		if cfg.EnableNATPortMap {
+			hostOpts = append(hostOpts, libp2p.NATPortMap())
+		}
+
+		if cfg.EnableHolePunching {
+			hostOpts = append(hostOpts, libp2p.EnableHolePunching())
+		}
+
+		if cfg.ForcePrivate {
+			hostOpts = append(hostOpts, libp2p.ForceReachabilityPrivate())
+		}
 	}
 
 	// Add connection gater if authorized_keys provided
@@ -126,4 +165,36 @@ func (n *Network) RegisterName(name string, peerID peer.ID) error {
 func (n *Network) Close() error {
 	n.cancel()
 	return n.host.Close()
+}
+
+// parseRelayAddrs parses relay multiaddrs into peer.AddrInfo
+func parseRelayAddrs(relayAddrs []string) ([]peer.AddrInfo, error) {
+	var infos []peer.AddrInfo
+	seen := make(map[peer.ID]bool)
+
+	for _, s := range relayAddrs {
+		maddr, err := ma.NewMultiaddr(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid relay addr %s: %w", s, err)
+		}
+
+		ai, err := peer.AddrInfoFromP2pAddr(maddr)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse relay addr %s: %w", s, err)
+		}
+
+		if !seen[ai.ID] {
+			seen[ai.ID] = true
+			infos = append(infos, *ai)
+		} else {
+			// Merge addrs for same peer
+			for i := range infos {
+				if infos[i].ID == ai.ID {
+					infos[i].Addrs = append(infos[i].Addrs, ai.Addrs...)
+				}
+			}
+		}
+	}
+
+	return infos, nil
 }
