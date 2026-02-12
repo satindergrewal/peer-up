@@ -12,6 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
@@ -24,6 +25,37 @@ import (
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 )
+
+// loadOrCreateIdentity loads an existing key file or creates a new one
+func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
+	if path == "" {
+		// No key file specified - generate ephemeral identity
+		priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
+		return priv, err
+	}
+
+	// Try to load existing key
+	if data, err := os.ReadFile(path); err == nil {
+		return crypto.UnmarshalPrivateKey(data)
+	}
+
+	// Create new key and save it
+	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := crypto.MarshalPrivateKey(priv)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return nil, err
+	}
+
+	return priv, nil
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -93,8 +125,15 @@ func main() {
 	}
 	fmt.Println()
 
+	// Load or create identity
+	priv, err := loadOrCreateIdentity(cfg.Identity.KeyFile)
+	if err != nil {
+		log.Fatalf("Identity error: %v", err)
+	}
+
 	// Build libp2p host options
 	hostOpts := []libp2p.Option{
+		libp2p.Identity(priv),
 		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),

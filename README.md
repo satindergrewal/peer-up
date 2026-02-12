@@ -1,14 +1,21 @@
-# libp2p Ping-Pong: Phone-to-Home-Computer via Relay
+# peer-up: Secure P2P Connection for CGNAT Networks
 
-A working example of connecting an iPhone to a home computer behind Starlink CGNAT using [libp2p](https://libp2p.io/). The system uses a lightweight relay server on a VPS to bridge the connection, with peer discovery via the public libp2p DHT.
+A production-ready libp2p-based system for connecting devices across CGNAT networks (like Starlink) with SSH-style authentication and YAML configuration.
+
+## Features
+
+✅ **Configuration-Based** - YAML config files, no hardcoded values, no recompilation needed
+✅ **SSH-Style Authentication** - `authorized_keys` file for peer access control
+✅ **NAT Traversal** - Works through Starlink CGNAT using relay + hole-punching
+✅ **Persistent Identity** - Ed25519 keypairs saved to files
+✅ **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
+✅ **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P after relay connection
 
 ## The Problem
 
-Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, meaning your home computer has no directly reachable public IP. Inbound IPv6 connections are also blocked by Starlink's router firewall. This makes it impossible for a phone on cellular data to directly connect to a home machine.
+Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, and blocks inbound IPv6 connections via router firewall. This makes direct peer-to-peer connections impossible without a relay.
 
 ## The Solution
-
-Three components work together to establish connectivity:
 
 ```
 ┌──────────┐         ┌──────────────┐         ┌──────────────┐
@@ -16,240 +23,330 @@ Three components work together to establish connectivity:
 │  (Phone)  │ outbound    (VPS)   outbound   │  (Linux/Mac) │
 └──────────┘         └──────────────┘         └──────────────┘
                            │
-                     Both sides connect
-                     OUTBOUND to relay.
-                     No inbound ports needed.
+                     Both connect OUTBOUND
+                     Authentication enforced
 ```
 
-1. **Relay Server** — Runs on a cheap VPS ($5/month Linode Nanode) with a public IP. Acts as a meeting point. Does not store data, only forwards streams between connected peers.
-2. **Home Node** — Runs on your home Linux or macOS machine. Connects outbound to the relay, registers a reservation, then listens for incoming ping messages.
-3. **Client Node** — Runs on a phone or laptop. Connects outbound to the relay, discovers the home node via the DHT, and sends ping messages through the relay circuit.
-
-## Architecture
-
-### Peer Discovery
-
-The home node advertises itself on the [libp2p Kademlia DHT](https://docs.libp2p.io/concepts/fundamentals/protocols/#kad-dht) using a rendezvous string (`khoji-pingpong-demo`). The client node searches for this rendezvous string to find the home node's Peer ID and relay circuit addresses.
-
-### Relay Circuit (Circuit Relay v2)
-
-Since direct connections are blocked by CGNAT/firewall, the system uses [libp2p Circuit Relay v2](https://docs.libp2p.io/concepts/nat/circuit-relay/):
-
-1. Home node connects outbound to the relay and makes a **reservation** (tells the relay "I'm reachable through you").
-2. Client node connects outbound to the relay.
-3. Client dials the home node using a **circuit address** like:
-   ```
-   /ip4/<RELAY_IP>/tcp/7777/p2p/<RELAY_PEER_ID>/p2p-circuit/p2p/<HOME_PEER_ID>
-   ```
-4. The relay bridges the two connections. Both sides only made outbound connections.
-
-### Hole-Punching (DCUtR)
-
-The home node enables [DCUtR](https://docs.libp2p.io/concepts/nat/hole-punching/) (Direct Connection Upgrade through Relay). After the initial relay connection is established, libp2p attempts to hole-punch a direct peer-to-peer connection. If successful, subsequent data flows directly without the relay — critical for large file transfers.
-
-### Persistent Identity
-
-The home node saves its Ed25519 keypair to `home_node.key` so its Peer ID remains stable across restarts. The relay server similarly saves to `relay_node.key`. The client generates a new ephemeral identity each run.
-
-## Prerequisites
-
-- **Go 1.22+** on all machines
-- A **VPS with a public IP** for the relay server (Linode Nanode 1GB at $5/month works)
-- Home machine running **Linux or macOS**
+1. **Relay Server** (VPS) - Circuit relay with no authentication (initially)
+2. **Home Node** - Accepts only authorized peers via `authorized_keys`
+3. **Client Node** - Connects with persistent identity or ephemeral key
 
 ## Project Structure
 
 ```
-├── relay-server/             # Runs on VPS
-│   ├── main.go               # Minimal relay — no DHT, private
+├── configs/                     # Sample configuration files
+│   ├── home-node.sample.yaml
+│   ├── client-node.sample.yaml
+│   ├── relay-server.sample.yaml
+│   └── authorized_keys.sample
+├── internal/                    # Shared packages
+│   ├── config/                  # YAML configuration loading
+│   │   ├── config.go
+│   │   └── loader.go
+│   └── auth/                    # Authentication system
+│       ├── authorized_keys.go   # Parser for authorized_keys file
+│       └── gater.go            # ConnectionGater implementation
+├── relay-server/               # VPS relay node
+│   ├── main.go
 │   ├── go.mod
-│   ├── setup-linode.sh       # VPS provisioning script
-│   └── relay-server.service  # systemd unit file
-├── home-node/                # Runs on your home computer
-│   ├── main.go               # Pong responder with relay reservation
+│   └── relay-server.service
+├── home-node/                  # Home computer node
+│   ├── main.go
 │   └── go.mod
-└── client-node/              # Runs on phone/laptop
-    ├── main.go               # Ping sender with DHT discovery
+└── client-node/                # Phone/laptop client
+    ├── main.go
     └── go.mod
 ```
 
-## Setup
+## Quick Start
 
-### Step 1: Deploy the Relay Server
-
-SSH into your VPS and run the setup script:
+### 1. Deploy Relay Server (VPS)
 
 ```bash
-chmod +x relay-server/setup-linode.sh
-./relay-server/setup-linode.sh
-```
-
-Or manually:
-
-```bash
-# Install Go
-wget -q https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-
-# Open firewall
-sudo ufw allow 7777/tcp
-
-# Build and run
+# On your VPS
 cd relay-server
-go mod tidy
-go build -o relay-server .
+
+# Create config from sample
+cp ../configs/relay-server.sample.yaml relay-server.yaml
+
+# Edit if needed (defaults are fine)
+# Build and run
+go build -o relay-server
 ./relay-server
 ```
 
-Output:
+**Copy the Relay Peer ID** from the output - you'll need it for the next steps.
 
-```
-=== Private libp2p Relay Server ===
-
-🔄 Relay Peer ID: 12D3KooW...
-
-Multiaddrs:
-  /ip4/<YOUR_VPS_IP>/tcp/7777/p2p/12D3KooW...
-```
-
-**Note the Peer ID and IP** — you'll need them for the next steps.
-
-To run as a service:
+### 2. Set Up Home Node
 
 ```bash
-sudo cp relay-server.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable relay-server
-sudo systemctl start relay-server
-```
-
-### Step 2: Configure the Home Node and Client Node
-
-Edit `relayAddrs` in **both** `home-node/main.go` and `client-node/main.go`:
-
-```go
-var relayAddrs = []string{
-    "/ip4/<YOUR_VPS_IP>/tcp/7777/p2p/<RELAY_PEER_ID>",
-}
-```
-
-Replace `<YOUR_VPS_IP>` and `<RELAY_PEER_ID>` with the actual values from the relay server output.
-
-### Step 3: Start the Home Node
-
-On your home Linux or macOS machine:
-
-```bash
+# On your home computer
 cd home-node
-go mod tidy
-go build -o home-node .
+
+# Create config from sample
+cp ../configs/home-node.sample.yaml home-node.yaml
+
+# Edit home-node.yaml:
+# 1. Set relay address and peer ID from step 1
+# 2. Set rendezvous string (keep default for now)
+# 3. Enable/disable authentication
+
+# Create authorized_keys file (if authentication enabled)
+cp ../configs/authorized_keys.sample authorized_keys
+# Add client peer IDs (one per line)
+
+# Build and run
+go build -o home-node
 ./home-node
 ```
 
-Wait for:
+**Copy the Home Node Peer ID** from the output.
 
-```
-✅ Connected to relay 12D3KooW...
-✅ Relay address: /ip4/.../p2p-circuit
-🏠 Peer ID: 12D3KooW...
-```
-
-**Copy the Home Node Peer ID** for the client.
-
-### Step 4: Run the Client
-
-On your phone (via gomobile) or another computer:
+### 3. Set Up Client Node
 
 ```bash
+# On your phone/laptop
 cd client-node
-go mod tidy
-go build -o client-node .
+
+# Create config from sample
+cp ../configs/client-node.sample.yaml client-node.yaml
+
+# Edit client-node.yaml:
+# 1. Set relay address and peer ID from step 1
+# 2. Match rendezvous string with home-node
+# 3. Set key_file for persistent identity (optional)
+
+# Build and run
+go build -o client-node
 ./client-node <HOME_PEER_ID>
 ```
 
-Expected output:
+## Configuration
 
+### Home Node Config (`home-node.yaml`)
+
+```yaml
+identity:
+  key_file: "home_node.key"  # Persistent peer identity
+
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/9100"
+    - "/ip4/0.0.0.0/udp/9100/quic-v1"
+  force_private_reachability: true  # Required for CGNAT
+
+relay:
+  addresses:
+    - "/ip4/YOUR_VPS_IP/tcp/7777/p2p/YOUR_RELAY_PEER_ID"
+  reservation_interval: "2m"
+
+discovery:
+  rendezvous: "my-private-p2p-network"  # Custom rendezvous string
+  bootstrap_peers: []  # Empty = use libp2p defaults
+
+security:
+  authorized_keys_file: "authorized_keys"
+  enable_connection_gating: true  # Enforce authentication
+
+protocols:
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"
 ```
-✅ Connected to relay 12D3KooW...
-✅ Found home node via rendezvous!
-📡 Connecting to home node...
-✅ Connected! via .../p2p-circuit
-🏓 Sending PING...
-🎉 Response: pong
+
+### Authorized Keys Format
+
+```bash
+# File: authorized_keys
+# Format: <peer_id> # optional comment
+
+12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL  # my-laptop
+12D3KooWPjceQrSwdWXPyLLeABRXmuqt69Rg3sBYUXCUVwbj7QbA  # my-phone
 ```
 
-## How the Relay Server Works
+## Authentication System
 
-The relay server is intentionally minimal — a plain libp2p host with the circuit relay v2 service attached manually via `relayv2.New()`:
+The authentication system uses two layers of defense:
+
+1. **ConnectionGater** (network level) - Blocks unauthorized peers during connection handshake
+2. **Protocol handler validation** (application level) - Double-checks authorization before processing requests
+
+### How It Works
+
+1. **Home node** loads `authorized_keys` at startup
+2. When a peer attempts to connect, `InterceptSecured()` checks the peer ID
+3. If not authorized → connection **DENIED** at network level
+4. If authorized → connection allowed, protocol handler performs secondary check
+
+### Testing Authentication
+
+**Test 1: Unauthorized peer (should be denied)**
+```bash
+# Run client-node without adding its peer ID to authorized_keys
+# Watch home-node logs:
+# "DENIED inbound connection from unauthorized peer: 12D3KooW..."
+```
+
+**Test 2: Authorized peer (should work)**
+```bash
+# Add client peer ID to home-node/authorized_keys
+# Restart home-node (to reload authorized_keys)
+# Run client-node again
+# Should connect successfully and receive pong
+```
+
+## Security Notes
+
+### File Permissions
+
+```bash
+chmod 600 *.key              # Private keys: owner read/write only
+chmod 600 authorized_keys    # SSH-style: owner read/write only
+chmod 644 *.yaml            # Configs: readable by all
+```
+
+### Fail-Safe Defaults
+
+- If `enable_connection_gating: true` but no `authorized_keys` file → **refuses to start**
+- If `authorized_keys` is empty → **warns loudly** but allows (for initial setup)
+- Home node: **Allows all outbound** connections (for DHT, relay, etc.)
+- Home node: **Blocks all unauthorized inbound** connections
+
+### Relay Server Security
+
+**Initial implementation:** Relay is open (no authentication) to reduce friction.
+
+**Future enhancement:** Add `authorized_keys` support to relay-server to restrict who can make reservations.
+
+## Architecture
+
+### Relay Circuit (Circuit Relay v2)
+
+1. Home node connects outbound to relay and makes a **reservation**
+2. Client connects outbound to relay
+3. Client dials home via circuit address:
+   ```
+   /ip4/<RELAY_IP>/tcp/7777/p2p/<RELAY_PEER_ID>/p2p-circuit/p2p/<HOME_PEER_ID>
+   ```
+4. Relay bridges the connection - both sides only made outbound connections
+
+### Hole-Punching (DCUtR)
+
+After relay connection is established, libp2p attempts **Direct Connection Upgrade through Relay**:
+- If successful → subsequent data flows directly (no relay bandwidth)
+- If failed (symmetric NAT) → continues using relay
+
+### Peer Discovery (Kademlia DHT)
+
+Home node **advertises** on DHT using rendezvous string.
+Client node **searches** DHT for the rendezvous string to find home node's peer ID and addresses.
+
+## Relay Server Details
+
+The relay is minimal and private:
 
 ```go
 h, err := libp2p.New(
+    libp2p.Identity(priv),
     libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/7777"),
 )
 relayv2.New(h, relayv2.WithInfiniteLimits())
 ```
 
-Key design decisions:
+**Key design decisions:**
+- **No DHT participation** - Avoids IPFS swarm traffic
+- **Non-standard port (7777)** - Further avoids IPFS discovery
+- **`WithInfiniteLimits()`** - Safe for private relay with known peers
+- **Manual `relayv2.New()`** - More reliable than `EnableRelayService()` option
 
-- **No DHT participation** — avoids being swarmed by the public IPFS network. Port 4001 + DHT = hundreds of random IPFS peers connecting within minutes.
-- **Non-standard port (7777)** — further avoids IPFS swarm traffic.
-- **`WithInfiniteLimits()`** — removes bandwidth and time caps on relay connections. Safe because this is a private relay only your nodes use.
-- **TCP only** — QUIC was removed to simplify the configuration and avoid transport negotiation issues.
-- **Manual `relayv2.New()`** — `libp2p.EnableRelayService()` as a host option did not reliably register the hop protocol in testing. Creating the relay manually after host creation works consistently.
+### Running as a Service (systemd)
 
-## Key Lessons Learned
-
-1. **`ForceReachabilityPrivate()`** is essential on the home node. Without it, libp2p detects the public IPv6 address and assumes it's publicly reachable, so it never bothers with relay reservations.
-
-2. **`libp2p.DisableRelay()`** disables ALL relay functionality, including the relay service. Don't use it on the relay server.
-
-3. **`libp2p.EnableRelayService()`** as a host option didn't reliably register the hop protocol. Using `relayv2.New(host)` after host creation is more reliable.
-
-4. **Port 4001** is the standard IPFS port. If your relay joins the DHT on this port, it will be swarmed by hundreds of IPFS peers within minutes. Use a non-standard port and skip DHT on the relay.
-
-5. **Starlink assigns globally routable IPv6 addresses** but blocks inbound connections via its router firewall. The IPv6 address is reachable from the local network but not from the internet without router configuration changes.
-
-6. **NAT port mapping (UPnP/PCP)** does not open inbound ports on Starlink's router, even though the libp2p host reports public addresses. The addresses are real but not reachable from outside.
-
-7. **DHT peer discovery** can return a peer with zero addresses if the peer hasn't had time to propagate. Always fall through to `FindPeer()` as a backup, and allow 3–5 minutes after home node startup.
+```bash
+# On VPS
+sudo cp relay-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable relay-server
+sudo systemctl start relay-server
+sudo systemctl status relay-server
+```
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| `failed to negotiate security protocol: EOF` | Old process still running on the port. `lsof -i :<PORT>` to find it, kill it, restart. |
-| `protocols not supported: [/libp2p/circuit/relay/0.2.0/hop]` | Relay service not registered. Use `relayv2.New(h)` instead of `EnableRelayService()`. |
-| `error opening hop stream to relay: connection failed` | Home node hasn't made a reservation. Check that `ForceReachabilityPrivate()` is set and relay addresses are correct. |
-| `Found peer via rendezvous but no addresses` | Home node needs more time on the DHT. Wait 3–5 minutes after startup. |
-| Home node shows no `/p2p-circuit` addresses | `ForceReachabilityPrivate()` missing, or relay address in config is wrong. |
-| `failed to sufficiently increase receive buffer size` | Not an error. Fix with `sudo sysctl -w net.core.rmem_max=7500000` |
-| Relay swarmed by hundreds of peers | Don't join the DHT on the relay. Use a non-standard port (not 4001). |
+| `Failed to load config` | Create config files from samples in `configs/` |
+| `Invalid configuration` | Check YAML syntax, required fields |
+| `Connection gating enabled but no authorized_keys_file` | Specify path in config |
+| `DENIED inbound connection` | Add peer ID to `authorized_keys` and restart home-node |
+| `authorized_keys file is empty` | Add authorized peer IDs (one per line) |
+| Home node shows no `/p2p-circuit` addresses | Check `force_private_reachability: true` and relay address |
+| `protocols not supported: [/libp2p/circuit/relay/0.2.0/hop]` | Relay service not running - check relay-server |
+| Relay swarmed by peers | Don't enable DHT on relay, use non-standard port |
+| `failed to sufficiently increase receive buffer size` | Warning only: `sudo sysctl -w net.core.rmem_max=7500000` |
+
+## Key Lessons Learned
+
+1. **`ForceReachabilityPrivate()`** is essential on home node behind CGNAT - without it, libp2p detects IPv6 and assumes it's reachable, skipping relay reservations
+
+2. **ConnectionGater checks happen after crypto handshake** - peer ID is verified before authorization check (`InterceptSecured`)
+
+3. **Configuration hot-reload not implemented** - Restart nodes after editing `authorized_keys` (file watcher planned for Phase 3)
+
+4. **Relay should use `relayv2.New(host)` manually** - `libp2p.EnableRelayService()` as host option didn't reliably register hop protocol in testing
+
+5. **Port 4001 = IPFS swarm traffic** - Use non-standard ports and skip DHT on relay to avoid hundreds of IPFS peer connections
 
 ## Bandwidth Considerations
 
-The relay only carries signaling and message traffic. For the ping-pong demo, this is negligible (bytes per message). A $5/month Linode with 1TB transfer is more than sufficient.
+- **Relay-based connection**: Limited by relay VPS bandwidth (~1TB/month on $5 Linode)
+- **After DCUtR upgrade**: Direct P2P connection, no relay bandwidth used
+- **Starlink symmetric NAT**: DCUtR often fails, relay remains in use
+- **Workaround**: Place Starlink router in bypass mode + custom router with IPv6 firewall configuration
 
-For large file transfers, the relay becomes a bottleneck. The strategy is:
+## Future Enhancements (Phase 3+)
 
-1. Use the relay for initial connection establishment.
-2. DCUtR (hole-punching) attempts to upgrade to a direct connection.
-3. If hole-punching succeeds, bulk data flows directly — no relay bandwidth used.
-4. If hole-punching fails (common with Starlink's symmetric NAT), consider placing the Starlink router in bypass mode and using your own router with configurable IPv6 firewall rules.
+### Phase 3: Enhanced Usability
+- [ ] `keytool` utility for key management
+  - Generate keypairs
+  - Extract peer ID from key file
+  - Validate authorized_keys file
+  - Add/remove authorized peers
+- [ ] Config validation CLI flag (`--validate-config`)
+- [ ] Hot-reload for `authorized_keys` (using file watcher)
 
-## Next Steps
+### Phase 4: Service Exposure
+- [ ] SSH tunneling through P2P connection
+- [ ] HTTP/HTTPS reverse proxy
+- [ ] Per-service authorization (override global `authorized_keys`)
+- [ ] Protocol naming: `/peerup/<service>/<version>`
 
-- **iOS app** — Compile client-node Go code into an `.xcframework` using `gomobile bind` and call it from Swift.
-- **File transfer** — Extend the `/pingpong/1.0.0` protocol to stream files between peers.
-- **mDNS discovery** — Add local network discovery for when the phone is on home WiFi (full LAN speed, no relay needed).
-- **Dynamic DNS** — Set up AAAA record updates for the home node's IPv6 address as a direct-connect fallback.
+### Phase 5: Mobile
+- [ ] iOS app using `gomobile bind`
+- [ ] Android app
+- [ ] mDNS for local network discovery (bypass relay on home WiFi)
 
 ## Dependencies
 
 - [go-libp2p](https://github.com/libp2p/go-libp2p) v0.38.2
 - [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.28.1
 - [go-multiaddr](https://github.com/multiformats/go-multiaddr) v0.14.0
+- [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) v3.0.1
 
 ## License
 
 MIT
+
+## Contributing
+
+This is a personal project, but issues and PRs are welcome!
+
+**Testing checklist for PRs:**
+- [ ] All three nodes build successfully
+- [ ] Config files load without errors
+- [ ] Unauthorized peer is denied
+- [ ] Authorized peer connects successfully
+- [ ] PING-PONG protocol works
+
+---
+
+**Built with libp2p** - Peer-to-peer networking that just works. 🚀

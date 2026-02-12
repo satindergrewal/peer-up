@@ -8,6 +8,11 @@
 *.so
 *.dylib
 
+# Built executables
+client-node/client-node
+home-node/home-node
+relay-server/relay-server
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -34,3 +39,6 @@ archived/
 authorized_keys
 relay_authorized_keys
 !configs/*.sample.yaml
+
+# Key files (private keys should never be committed)
+*.key
