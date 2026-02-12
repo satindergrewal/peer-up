@@ -132,6 +132,19 @@ func main() {
 		}
 	}()
 
+	// Expose services from config
+	if cfg.Services != nil {
+		for name, svc := range cfg.Services {
+			if svc.Enabled {
+				fmt.Printf("📡 Exposing service: %s -> %s\n", name, svc.LocalAddress)
+				if err := net.ExposeService(name, svc.LocalAddress); err != nil {
+					log.Printf("⚠️  Failed to expose service %s: %v", name, err)
+				}
+			}
+		}
+	}
+	fmt.Println()
+
 	// Set up the ping-pong handler
 	h.SetStreamHandler(protocol.ID(cfg.Protocols.PingPong.ID), func(s network.Stream) {
 		remotePeer := s.Conn().RemotePeer()

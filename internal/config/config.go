@@ -12,6 +12,8 @@ type HomeNodeConfig struct {
 	Discovery DiscoveryConfig `yaml:"discovery"`
 	Security  SecurityConfig  `yaml:"security"`
 	Protocols ProtocolsConfig `yaml:"protocols"`
+	Services  ServicesConfig  `yaml:"services,omitempty"`
+	Names     NamesConfig     `yaml:"names,omitempty"`
 }
 
 // ClientNodeConfig represents configuration for the client node
@@ -22,6 +24,7 @@ type ClientNodeConfig struct {
 	Discovery DiscoveryConfig `yaml:"discovery"`
 	Security  SecurityConfig  `yaml:"security"`
 	Protocols ProtocolsConfig `yaml:"protocols"`
+	Names     NamesConfig     `yaml:"names,omitempty"`
 }
 
 // RelayServerConfig represents configuration for the relay server
