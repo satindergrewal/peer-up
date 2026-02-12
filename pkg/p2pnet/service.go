@@ -92,23 +92,36 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 			return
 		}
 
-		// Bidirectional proxy
+		// Bidirectional proxy with proper cleanup
+		errCh := make(chan error, 2)
+
+		// Stream -> Local
 		go func() {
 			_, err := io.Copy(s, localConn)
 			if err != nil && err != io.EOF {
 				log.Printf("⚠️  Stream→Local copy error for %s: %v", svc.Name, err)
 			}
-			s.Close()
-			localConn.Close()
+			errCh <- err
 		}()
 
-		_, err = io.Copy(localConn, s)
-		if err != nil && err != io.EOF {
-			log.Printf("⚠️  Local→Stream copy error for %s: %v", svc.Name, err)
-		}
+		// Local -> Stream
+		go func() {
+			_, err := io.Copy(localConn, s)
+			if err != nil && err != io.EOF {
+				log.Printf("⚠️  Local→Stream copy error for %s: %v", svc.Name, err)
+			}
+			errCh <- err
+		}()
 
+		// Wait for first error (one direction finished)
+		<-errCh
+
+		// Close connections to trigger the other direction to finish
 		localConn.Close()
 		s.Close()
+
+		// Wait for the second direction to finish
+		<-errCh
 
 		log.Printf("✅ Closed %s connection from %s", svc.Name, remotePeer.String()[:16]+"...")
 	}

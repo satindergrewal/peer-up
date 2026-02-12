@@ -14,8 +14,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <home-peer-id> [local-port]", os.Args[0])
+	if len(os.Args) < 4 {
+		log.Fatalf("Usage: %s <home-peer-id> <service-name> <local-port>", os.Args[0])
 	}
 
 	homePeerID, err := peer.Decode(os.Args[1])
@@ -23,10 +23,8 @@ func main() {
 		log.Fatalf("Invalid peer ID: %v", err)
 	}
 
-	localPort := "2222"
-	if len(os.Args) > 2 {
-		localPort = os.Args[2]
-	}
+	serviceName := os.Args[2] // e.g., "ssh", "custom-3389"
+	localPort := os.Args[3]   // e.g., "3389"
 
 	// Load config
 	cfg, err := config.LoadClientNodeConfig("client-node.yaml")
@@ -34,16 +32,17 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
-	fmt.Println("=== SSH Proxy via P2P ===")
+	fmt.Printf("=== TCP Proxy via P2P ===\n")
+	fmt.Printf("Service: %s\n", serviceName)
 	fmt.Println()
 
 	// Create P2P network
 	p2pNetwork, err := p2pnet.New(&p2pnet.Config{
-		KeyFile:        cfg.Identity.KeyFile,
-		Config:         &config.Config{Network: cfg.Network},
-		EnableRelay:    true,
-		RelayAddrs:     cfg.Relay.Addresses,
-		ForcePrivate:   cfg.Network.ForcePrivateReachability,
+		KeyFile:            cfg.Identity.KeyFile,
+		Config:             &config.Config{Network: cfg.Network},
+		EnableRelay:        true,
+		RelayAddrs:         cfg.Relay.Addresses,
+		ForcePrivate:       cfg.Network.ForcePrivateReachability,
 		EnableNATPortMap:   true,
 		EnableHolePunching: true,
 	})
@@ -59,14 +58,11 @@ func main() {
 	fmt.Println("🔗 Connecting to home peer...")
 
 	// Add home peer's relay addresses to peerstore
-	// This allows the client to reach the home-node through the relay
 	h := p2pNetwork.Host()
 	for _, relayAddr := range cfg.Relay.Addresses {
-		// Construct relay circuit address: /ip4/.../tcp/.../p2p/<relay>/p2p-circuit/p2p/<home-peer>
 		circuitAddr := relayAddr + "/p2p-circuit/p2p/" + homePeerID.String()
 		fmt.Printf("📍 Adding home peer relay address: %s\n", circuitAddr)
 
-		// Parse the multiaddr and add to peerstore
 		addrInfo, err := peer.AddrInfoFromString(circuitAddr)
 		if err != nil {
 			log.Printf("⚠️  Failed to parse relay address: %v", err)
@@ -84,10 +80,10 @@ func main() {
 	}
 	defer listener.Close()
 
-	fmt.Printf("✅ SSH proxy listening on localhost:%s\n", localPort)
+	fmt.Printf("✅ TCP proxy listening on localhost:%s\n", localPort)
 	fmt.Println()
-	fmt.Println("💡 Connect via SSH:")
-	fmt.Printf("   ssh -p %s your_username@localhost\n", localPort)
+	fmt.Println("💡 Connect to the service:")
+	fmt.Printf("   localhost:%s → %s service on home-node\n", localPort, serviceName)
 	fmt.Println("\nPress Ctrl+C to stop.")
 	fmt.Println()
 
@@ -99,35 +95,35 @@ func main() {
 			continue
 		}
 
-		go handleSSHConnection(p2pNetwork, homePeerID, localConn)
+		go handleConnection(p2pNetwork, homePeerID, serviceName, localConn)
 	}
 }
 
-func handleSSHConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, localConn net.Conn) {
+func handleConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, serviceName string, localConn net.Conn) {
 	defer localConn.Close()
 
-	fmt.Println("📥 New SSH connection request")
+	fmt.Printf("📥 New connection request for service: %s\n", serviceName)
 
-	// Open P2P stream to SSH service
-	sshStream, err := p2pNetwork.ConnectToService(homePeerID, "ssh")
+	// Open P2P stream to the service
+	serviceStream, err := p2pNetwork.ConnectToService(homePeerID, serviceName)
 	if err != nil {
-		log.Printf("❌ Failed to connect to SSH service: %v", err)
+		log.Printf("❌ Failed to connect to service %s: %v", serviceName, err)
 		return
 	}
-	defer sshStream.Close()
+	defer serviceStream.Close()
 
-	fmt.Println("✅ Connected to home SSH service")
+	fmt.Printf("✅ Connected to %s service on home-node\n", serviceName)
 
 	// Bidirectional copy with proper cleanup
 	errCh := make(chan error, 2)
 
 	go func() {
-		_, err := io.Copy(sshStream, localConn)
+		_, err := io.Copy(serviceStream, localConn)
 		errCh <- err
 	}()
 
 	go func() {
-		_, err := io.Copy(localConn, sshStream)
+		_, err := io.Copy(localConn, serviceStream)
 		errCh <- err
 	}()
 
@@ -140,5 +136,5 @@ func handleSSHConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, localCo
 	// Wait for second direction to finish
 	<-errCh
 
-	fmt.Println("🔌 SSH connection closed")
+	fmt.Printf("🔌 Connection to %s closed\n", serviceName)
 }
