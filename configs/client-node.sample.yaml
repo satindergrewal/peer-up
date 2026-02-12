@@ -53,3 +53,12 @@ protocols:
   ping_pong:
     enabled: true
     id: "/pingpong/1.0.0"
+
+# Name Resolution (Phase 4+)
+# Map friendly names to peer IDs for easy connection
+names:
+  # Example: Map "home" to your home node's peer ID
+  # home: "12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL"
+  #
+  # Then connect using the name:
+  # net.ConnectToService("home", "ssh")

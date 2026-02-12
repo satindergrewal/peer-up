@@ -1,8 +1,21 @@
-# peer-up: Secure P2P Connection for CGNAT Networks
+# peer-up: Decentralized P2P Network Infrastructure
 
-A production-ready libp2p-based system for connecting devices across CGNAT networks (like Starlink) with SSH-style authentication and YAML configuration.
+A libp2p-based federated peer-to-peer network platform that enables secure connections across CGNAT networks with SSH-style authentication, service exposure, and local-first naming.
 
-## Features
+## Vision
+
+**peer-up** is evolving from a simple NAT traversal tool into a comprehensive **decentralized P2P network infrastructure** that:
+
+- 🌐 **Connects your devices** across CGNAT/firewall barriers (Starlink, mobile networks)
+- 🔐 **Exposes local services** (SSH, HTTP, SMB, custom protocols) through P2P connections
+- 🏘️ **Federates networks** - Connect your network to friends' networks (like Mastodon for P2P)
+- 📱 **Works on mobile** - iOS/Android apps with VPN-like functionality
+- 🏷️ **Flexible naming** - Local names, network-scoped domains, optional blockchain anchoring
+- 📚 **Reusable library** - Import `pkg/p2pnet` in your own Go projects
+
+**Think:** Tailscale + Tor Hidden Services + your own federated network.
+
+## Current Status (Phase 1-3 Complete ✅)
 
 - ✅ **Configuration-Based** - YAML config files, no hardcoded values, no recompilation needed
 - ✅ **SSH-Style Authentication** - `authorized_keys` file for peer access control
@@ -10,6 +23,21 @@ A production-ready libp2p-based system for connecting devices across CGNAT netwo
 - ✅ **Persistent Identity** - Ed25519 keypairs saved to files
 - ✅ **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
 - ✅ **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P after relay connection
+- ✅ **Key Management Tool** - `keytool` CLI for managing keypairs and authorized_keys
+
+## Use Cases
+
+### Current (Phase 1-3)
+- ✅ Connect phone to home computer across CGNAT/firewall
+- ✅ Secure P2P messaging/protocols with authentication
+- ✅ Private relay server for your devices
+
+### Coming Soon (Phase 4+)
+- 🚀 Access home SSH/HTTP/SMB from anywhere (mobile/desktop)
+- 🚀 Federate your network with friends' networks
+- 🚀 Use custom protocols: `ssh user@laptop.grewal` or `http://desktop.alice:8080`
+- 🚀 Mount SMB shares using peer names: `//home.grewal/media`
+- 🚀 Build apps with `pkg/p2pnet` library for P2P networking
 
 ## The Problem
 
@@ -432,27 +460,53 @@ keytool validate authorized_keys
 keytool revoke 12D3KooW... --file authorized_keys
 ```
 
-## Future Enhancements (Phase 3+)
+## Roadmap
 
-### Phase 3: Enhanced Usability
-- [x] ✅ `keytool` utility for key management
-  - [x] Generate keypairs
-  - [x] Extract peer ID from key file
-  - [x] Validate authorized_keys file
-  - [x] Add/remove authorized peers
-- [ ] Config validation CLI flag (`--validate-config`)
-- [ ] Hot-reload for `authorized_keys` (using file watcher)
+See [ROADMAP.md](ROADMAP.md) for detailed multi-phase implementation plan.
 
-### Phase 4: Service Exposure
-- [ ] SSH tunneling through P2P connection
-- [ ] HTTP/HTTPS reverse proxy
-- [ ] Per-service authorization (override global `authorized_keys`)
-- [ ] Protocol naming: `/peerup/<service>/<version>`
+### Phase 1-3: Foundation ✅ COMPLETE
+- [x] ✅ Configuration system (YAML-based)
+- [x] ✅ SSH-style authentication (ConnectionGater + authorized_keys)
+- [x] ✅ Relay-based NAT traversal
+- [x] ✅ `keytool` CLI utility for key management
 
-### Phase 5: Mobile
-- [ ] iOS app using `gomobile bind`
-- [ ] Android app
-- [ ] mDNS for local network discovery (bypass relay on home WiFi)
+### Phase 4: Service Exposure & Core Library 🚧 IN PROGRESS
+
+**4A: Core Library** (Current)
+- [ ] Refactor to `pkg/p2pnet` reusable package
+- [ ] Service registry and exposure
+- [ ] Bidirectional TCP↔Stream proxy
+- [ ] Local name resolution (simple YAML-based)
+
+**4B: Desktop Gateway**
+- [ ] Multi-mode daemon: SOCKS / DNS / TUN
+- [ ] Virtual network overlay (10.64.0.0/16)
+- [ ] Local DNS server (`.p2p` TLD)
+- [ ] `/etc/hosts` integration
+
+**4C: Federation**
+- [ ] Relay-to-relay peering
+- [ ] Network-scoped naming (`host.network`)
+- [ ] Cross-network routing
+- [ ] Trust/authorization between networks
+
+**4D: Mobile Apps**
+- [ ] iOS: NEPacketTunnelProvider (VPN mode)
+- [ ] Android: Full VPN service
+- [ ] Per-app SDK for native integration
+
+**4E: Advanced Naming** (Optional)
+- [ ] Plugin architecture for name resolvers
+- [ ] Blockchain integration (Ethereum/Bitcoin OP_RETURN)
+- [ ] ENS (.eth) support
+- [ ] IPFS/Arweave archiving
+
+### Phase 5+: Ecosystem
+- [ ] Protocol marketplace (community-contributed services)
+- [ ] Web dashboard for network management
+- [ ] Performance monitoring and analytics
+- [ ] Mobile SDKs for third-party apps
+- [ ] Documentation and tutorials
 
 ## Dependencies
 

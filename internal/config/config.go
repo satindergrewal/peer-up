@@ -81,3 +81,28 @@ type PingPongConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	ID      string `yaml:"id"`
 }
+
+// ServicesConfig holds service exposure configuration
+type ServicesConfig map[string]ServiceConfig
+
+// ServiceConfig holds configuration for a single exposed service
+type ServiceConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	LocalAddress string `yaml:"local_address"`
+	Protocol     string `yaml:"protocol,omitempty"` // Optional custom protocol ID
+}
+
+// NamesConfig holds name resolution configuration
+type NamesConfig map[string]string // name → peer ID
+
+// Config is a unified configuration structure for all components
+type Config struct {
+	Identity  IdentityConfig  `yaml:"identity"`
+	Network   NetworkConfig   `yaml:"network"`
+	Relay     RelayConfig     `yaml:"relay,omitempty"`
+	Discovery DiscoveryConfig `yaml:"discovery,omitempty"`
+	Security  SecurityConfig  `yaml:"security"`
+	Protocols ProtocolsConfig `yaml:"protocols,omitempty"`
+	Services  ServicesConfig  `yaml:"services,omitempty"`
+	Names     NamesConfig     `yaml:"names,omitempty"`
+}

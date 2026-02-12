@@ -57,3 +57,44 @@ protocols:
   ping_pong:
     enabled: true
     id: "/pingpong/1.0.0"
+
+# Service Exposure (Phase 4+)
+# Expose local services through the P2P network
+services:
+  # SSH service - allow remote SSH access
+  ssh:
+    enabled: false  # Set to true to enable
+    local_address: "localhost:22"
+
+  # HTTP/Web service - expose local web server
+  web:
+    enabled: false
+    local_address: "localhost:80"
+
+  # HTTPS service
+  https:
+    enabled: false
+    local_address: "localhost:443"
+
+  # Plex media server
+  plex:
+    enabled: false
+    local_address: "localhost:32400"
+
+  # SMB/CIFS file sharing
+  smb:
+    enabled: false
+    local_address: "localhost:445"
+
+  # Custom service example
+  custom:
+    enabled: false
+    local_address: "localhost:9999"
+    protocol: "/peerup/custom/1.0.0"  # Optional: custom protocol ID
+
+# Name Resolution (Phase 4+)
+# Map friendly names to peer IDs
+names:
+  # Example mappings:
+  # laptop: "12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL"
+  # phone: "12D3KooWPjceQrSwdWXPyLLeABRXmuqt69Rg3sBYUXCUVwbj7QbA"
