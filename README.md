@@ -27,7 +27,7 @@ Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, and blocks inbound IPv6 connect
                      Authentication enforced
 ```
 
-1. **Relay Server** (VPS) - Circuit relay with no authentication (initially)
+1. **Relay Server** (VPS) - Circuit relay with optional authentication via `authorized_keys`
 2. **Home Node** - Accepts only authorized peers via `authorized_keys`
 3. **Client Node** - Connects with persistent identity or ephemeral key
 
@@ -214,9 +214,15 @@ chmod 644 *.yaml            # Configs: readable by all
 
 ### Relay Server Security
 
-**Initial implementation:** Relay is open (no authentication) to reduce friction.
+**Authentication available:** Relay server supports `authorized_keys` to restrict who can make reservations.
 
-**Future enhancement:** Add `authorized_keys` support to relay-server to restrict who can make reservations.
+**Configuration:**
+- Set `enable_connection_gating: true` in `relay-server.yaml`
+- Add authorized peer IDs to `relay_authorized_keys` file
+- Only authorized peers can connect and make circuit relay reservations
+- Prevents bandwidth theft and unauthorized relay usage
+
+**Recommended:** Enable authentication in production to protect your VPS bandwidth limits.
 
 ## Architecture
 
