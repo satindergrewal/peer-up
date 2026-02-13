@@ -104,37 +104,49 @@ func main() {
 }
 
 func handleSSHConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, localConn net.Conn) {
-	defer localConn.Close()
-
 	fmt.Println("📥 New SSH connection request")
 
 	// Open P2P stream to SSH service
 	sshStream, err := p2pNetwork.ConnectToService(homePeerID, "ssh")
 	if err != nil {
 		log.Printf("❌ Failed to connect to SSH service: %v", err)
+		localConn.Close()
 		return
 	}
-	defer sshStream.Close()
 
 	fmt.Println("✅ Connected to home SSH service")
 
-	// Bidirectional copy with proper cleanup
-	errCh := make(chan error, 2)
+	// Bidirectional copy with half-close propagation
+	tcpDone := make(chan struct{})
+	streamDone := make(chan struct{})
 
+	// Local TCP -> P2P Stream
 	go func() {
+		defer close(tcpDone)
 		_, err := io.Copy(sshStream, localConn)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("⚠️  TCP→Stream error: %v", err)
+		}
+		sshStream.CloseWrite()
 	}()
 
+	// P2P Stream -> Local TCP
 	go func() {
+		defer close(streamDone)
 		_, err := io.Copy(localConn, sshStream)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("⚠️  Stream→TCP error: %v", err)
+		}
+		if tc, ok := localConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
 	}()
 
-	// Wait for both directions to finish
-	<-errCh
-	<-errCh
+	<-tcpDone
+	<-streamDone
 
-	// Connections will be closed by deferred Close() calls
+	localConn.Close()
+	sshStream.Close()
+
 	fmt.Println("🔌 SSH connection closed")
 }

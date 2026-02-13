@@ -15,61 +15,75 @@ func ProxyStreamToTCP(stream network.Stream, tcpAddr string) error {
 	if err != nil {
 		return err
 	}
-	defer tcpConn.Close()
 
-	// Create error channel to capture errors from either direction
-	errCh := make(chan error, 2)
-
-	// Stream → TCP (download)
-	go func() {
-		_, err := io.Copy(tcpConn, stream)
-		errCh <- err
-	}()
-
-	// TCP → Stream (upload)
-	go func() {
-		_, err := io.Copy(stream, tcpConn)
-		errCh <- err
-	}()
-
-	// Wait for either direction to finish (first error or EOF)
-	err = <-errCh
-
-	// Close both connections
-	stream.Close()
-	tcpConn.Close()
-
-	return err
-}
-
-// ProxyTCPToStream creates a bidirectional proxy between a TCP connection and a libp2p stream
-func ProxyTCPToStream(tcpConn net.Conn, stream network.Stream) error {
-	defer tcpConn.Close()
-	defer stream.Close()
-
-	// Create error channel
-	errCh := make(chan error, 2)
+	tcpDone := make(chan struct{})
+	streamDone := make(chan struct{})
 
 	// TCP → Stream
 	go func() {
+		defer close(tcpDone)
 		_, err := io.Copy(stream, tcpConn)
 		if err != nil && err != io.EOF {
 			log.Printf("TCP→Stream error: %v", err)
 		}
-		errCh <- err
+		stream.CloseWrite()
 	}()
 
 	// Stream → TCP
 	go func() {
+		defer close(streamDone)
 		_, err := io.Copy(tcpConn, stream)
 		if err != nil && err != io.EOF {
 			log.Printf("Stream→TCP error: %v", err)
 		}
-		errCh <- err
+		if tc, ok := tcpConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
 	}()
 
-	// Wait for first error
-	return <-errCh
+	<-tcpDone
+	<-streamDone
+
+	tcpConn.Close()
+	stream.Close()
+
+	return nil
+}
+
+// ProxyTCPToStream creates a bidirectional proxy between a TCP connection and a libp2p stream
+func ProxyTCPToStream(tcpConn net.Conn, stream network.Stream) error {
+	tcpDone := make(chan struct{})
+	streamDone := make(chan struct{})
+
+	// TCP → Stream
+	go func() {
+		defer close(tcpDone)
+		_, err := io.Copy(stream, tcpConn)
+		if err != nil && err != io.EOF {
+			log.Printf("TCP→Stream error: %v", err)
+		}
+		stream.CloseWrite()
+	}()
+
+	// Stream → TCP
+	go func() {
+		defer close(streamDone)
+		_, err := io.Copy(tcpConn, stream)
+		if err != nil && err != io.EOF {
+			log.Printf("Stream→TCP error: %v", err)
+		}
+		if tc, ok := tcpConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
+	}()
+
+	<-tcpDone
+	<-streamDone
+
+	tcpConn.Close()
+	stream.Close()
+
+	return nil
 }
 
 // TCPListener creates a local TCP listener that forwards connections to a P2P service
@@ -105,31 +119,44 @@ func (l *TCPListener) Serve() error {
 
 // handleConnection handles a single TCP connection
 func (l *TCPListener) handleConnection(tcpConn net.Conn) {
-	defer tcpConn.Close()
-
 	// Dial P2P service
 	serviceConn, err := l.dialFunc()
 	if err != nil {
 		log.Printf("Failed to dial P2P service: %v", err)
+		tcpConn.Close()
 		return
 	}
-	defer serviceConn.Close()
 
-	// Bidirectional proxy
-	errCh := make(chan error, 2)
+	tcpDone := make(chan struct{})
+	streamDone := make(chan struct{})
 
+	// TCP → Stream
 	go func() {
+		defer close(tcpDone)
 		_, err := io.Copy(serviceConn, tcpConn)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("TCP→Stream error: %v", err)
+		}
+		serviceConn.CloseWrite()
 	}()
 
+	// Stream → TCP
 	go func() {
+		defer close(streamDone)
 		_, err := io.Copy(tcpConn, serviceConn)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("Stream→TCP error: %v", err)
+		}
+		if tc, ok := tcpConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
 	}()
 
-	// Wait for either direction to finish
-	<-errCh
+	<-tcpDone
+	<-streamDone
+
+	tcpConn.Close()
+	serviceConn.Close()
 }
 
 // Close closes the TCP listener

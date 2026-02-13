@@ -100,37 +100,52 @@ func main() {
 }
 
 func handleConnection(p2pNetwork *p2pnet.Network, homePeerID peer.ID, serviceName string, localConn net.Conn) {
-	defer localConn.Close()
-
 	fmt.Printf("📥 New connection request for service: %s\n", serviceName)
 
 	// Open P2P stream to the service
 	serviceStream, err := p2pNetwork.ConnectToService(homePeerID, serviceName)
 	if err != nil {
 		log.Printf("❌ Failed to connect to service %s: %v", serviceName, err)
+		localConn.Close()
 		return
 	}
-	defer serviceStream.Close()
 
 	fmt.Printf("✅ Connected to %s service on home-node\n", serviceName)
 
-	// Bidirectional copy with proper cleanup
-	errCh := make(chan error, 2)
+	// Bidirectional copy with half-close propagation
+	tcpDone := make(chan struct{})
+	streamDone := make(chan struct{})
 
+	// Local TCP -> P2P Stream
 	go func() {
+		defer close(tcpDone)
 		_, err := io.Copy(serviceStream, localConn)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("⚠️  TCP→Stream error for %s: %v", serviceName, err)
+		}
+		// Signal remote: no more data from this side
+		serviceStream.CloseWrite()
 	}()
 
+	// P2P Stream -> Local TCP
 	go func() {
+		defer close(streamDone)
 		_, err := io.Copy(localConn, serviceStream)
-		errCh <- err
+		if err != nil && err != io.EOF {
+			log.Printf("⚠️  Stream→TCP error for %s: %v", serviceName, err)
+		}
+		// Signal local client: no more data from this side
+		if tc, ok := localConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
 	}()
 
-	// Wait for both directions to finish
-	<-errCh
-	<-errCh
+	// Wait for both directions (safe: each signals the other via CloseWrite)
+	<-tcpDone
+	<-streamDone
 
-	// Connections will be closed by deferred Close() calls
+	localConn.Close()
+	serviceStream.Close()
+
 	fmt.Printf("🔌 Connection to %s closed\n", serviceName)
 }

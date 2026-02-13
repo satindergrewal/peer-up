@@ -25,6 +25,7 @@ type Service struct {
 // ServiceConn represents a connection to a remote service
 type ServiceConn interface {
 	io.ReadWriteCloser
+	CloseWrite() error
 }
 
 // ServiceRegistry manages service registration and connections
@@ -92,32 +93,38 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 			return
 		}
 
-		// Bidirectional proxy with proper cleanup
-		errCh := make(chan error, 2)
+		// Bidirectional proxy with half-close propagation
+		tcpDone := make(chan struct{})
+		streamDone := make(chan struct{})
 
-		// Stream -> Local
+		// Local TCP -> Stream
 		go func() {
+			defer close(tcpDone)
 			_, err := io.Copy(s, localConn)
-			if err != nil && err != io.EOF {
-				log.Printf("⚠️  Stream→Local copy error for %s: %v", svc.Name, err)
-			}
-			errCh <- err
-		}()
-
-		// Local -> Stream
-		go func() {
-			_, err := io.Copy(localConn, s)
 			if err != nil && err != io.EOF {
 				log.Printf("⚠️  Local→Stream copy error for %s: %v", svc.Name, err)
 			}
-			errCh <- err
+			// Signal remote peer: no more data coming from this side
+			s.CloseWrite()
 		}()
 
-		// Wait for both directions to finish
-		<-errCh
-		<-errCh
+		// Stream -> Local TCP
+		go func() {
+			defer close(streamDone)
+			_, err := io.Copy(localConn, s)
+			if err != nil && err != io.EOF {
+				log.Printf("⚠️  Stream→Local copy error for %s: %v", svc.Name, err)
+			}
+			// Signal local service: no more data coming from this side
+			if tc, ok := localConn.(*net.TCPConn); ok {
+				tc.CloseWrite()
+			}
+		}()
 
-		// Now safe to close connections
+		// Wait for both directions to finish (safe: each signals the other via CloseWrite)
+		<-tcpDone
+		<-streamDone
+
 		localConn.Close()
 		s.Close()
 
@@ -179,4 +186,8 @@ func (s *serviceStream) Write(p []byte) (n int, err error) {
 
 func (s *serviceStream) Close() error {
 	return s.stream.Close()
+}
+
+func (s *serviceStream) CloseWrite() error {
+	return s.stream.CloseWrite()
 }
