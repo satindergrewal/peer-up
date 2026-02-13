@@ -74,24 +74,28 @@ This document outlines the multi-phase evolution of peer-up from a simple NAT tr
 
 ---
 
-## Phase 4: Service Exposure & Core Library 🚧 IN PROGRESS
+## Phase 4: Service Exposure & Core Library
 
 **Goal**: Transform peer-up into a reusable library and enable exposing local services through P2P connections.
 
-### Phase 4A: Core Library & Service Registry (Current)
+### Phase 4A: Core Library & Service Registry ✅ COMPLETE
 
 **Timeline**: 2-3 weeks
-**Status**: 🚧 Starting
+**Status**: ✅ Completed
 
 **Deliverables**:
-- [ ] Create `pkg/p2pnet/` as importable package
-  - [ ] `network.go` - Core P2P network setup
-  - [ ] `service.go` - Service registry and management
-  - [ ] `proxy.go` - Bidirectional TCP↔Stream proxy
-  - [ ] `naming.go` - Local name resolution
-- [ ] Extend config structs for service definitions
-- [ ] Update sample YAML configs with service examples
-- [ ] Refactor home-node/client-node to use library
+- [x] Create `pkg/p2pnet/` as importable package
+  - [x] `network.go` - Core P2P network setup, relay helpers, name resolution
+  - [x] `service.go` - Service registry and management
+  - [x] `proxy.go` - Bidirectional TCP↔Stream proxy with half-close
+  - [x] `naming.go` - Local name resolution (name → peer ID)
+  - [x] `identity.go` - Ed25519 identity management
+- [x] Extend config structs for service definitions
+- [x] Update sample YAML configs with service examples
+- [x] Refactor to `cmd/` layout with single Go module
+  - [x] `cmd/home-node/` - Home node binary using library
+  - [x] `cmd/peerup/` - Single client binary with subcommands (proxy, ping)
+- [x] Tested: SSH, XRDP, generic TCP proxy all working across LAN and 5G
 
 **Service Configuration Example**:
 ```yaml
@@ -124,12 +128,26 @@ net, _ := p2pnet.New(&p2pnet.Config{
 net.ExposeService("api", "localhost:8080")
 
 // Connect to peer's service
-conn, _ := net.DialService(peerID, "api")
+conn, _ := net.ConnectToService(peerID, "api")
+
+// Resolve names to peer IDs
+net.LoadNames(map[string]string{"home": "12D3KooW..."})
+peerID, _ := net.ResolveName("home")
+
+// Add relay addresses for a remote peer
+net.AddRelayAddressesForPeer(relayAddrs, peerID)
 ```
+
+**Key Files**:
+- `pkg/p2pnet/network.go` - Network creation, relay helpers, name resolution
+- `pkg/p2pnet/service.go` - ServiceRegistry, ServiceConn interface
+- `pkg/p2pnet/proxy.go` - TCPListener, bidirectional proxy
+- `cmd/home-node/main.go` - Home node binary
+- `cmd/peerup/main.go` - Client binary (proxy + ping subcommands)
 
 ---
 
-### Phase 4B: Desktop Gateway Daemon
+### Phase 4B: Desktop Gateway Daemon (Next)
 
 **Timeline**: 2-3 weeks
 **Status**: 📋 Planned
@@ -361,8 +379,8 @@ resolvers := []NameResolver{
 | Phase 1: Configuration | ✅ 1 week | Complete |
 | Phase 2: Authentication | ✅ 2 weeks | Complete |
 | Phase 3: keytool CLI | ✅ 1 week | Complete |
-| **Phase 4A: Core Library** | 🚧 2-3 weeks | **In Progress** |
-| Phase 4B: Desktop Gateway | 📋 2-3 weeks | Planned |
+| Phase 4A: Core Library | ✅ 2-3 weeks | Complete |
+| **Phase 4B: Desktop Gateway** | 📋 2-3 weeks | **Next** |
 | Phase 4C: Federation | 📋 2-3 weeks | Planned |
 | Phase 4D: Mobile Apps | 📋 3-4 weeks | Planned |
 | Phase 4E: Advanced Naming | 📋 2-3 weeks | Planned (Optional) |
@@ -414,5 +432,5 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 ---
 
 **Last Updated**: 2026-02-13
-**Current Phase**: 4A (Core Library & Service Registry)
-**Next Milestone**: Importable `pkg/p2pnet` package with service exposure
+**Current Phase**: 4A Complete, 4B Next
+**Next Milestone**: Desktop Gateway Daemon (SOCKS5 proxy mode)

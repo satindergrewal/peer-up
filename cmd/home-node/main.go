@@ -29,17 +29,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("=== Home Node (Refactored with pkg/p2pnet) ===")
+	fmt.Println("=== Home Node ===")
 	fmt.Println()
 
 	// Load configuration
 	cfg, err := config.LoadHomeNodeConfig("home-node.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v\n", err)
-		fmt.Println("Please create home-node.yaml from the sample:")
-		fmt.Println("  cp configs/home-node.sample.yaml home-node.yaml")
-		fmt.Println("  # Edit the file with your relay server details")
-		os.Exit(1)
 	}
 
 	// Validate configuration
@@ -79,6 +75,13 @@ func main() {
 	}
 	defer net.Close()
 
+	// Load name mappings from config
+	if cfg.Names != nil {
+		if err := net.LoadNames(cfg.Names); err != nil {
+			log.Printf("⚠️  Failed to load names: %v", err)
+		}
+	}
+
 	// Get underlying libp2p host for advanced features
 	h := net.Host()
 
@@ -86,7 +89,10 @@ func main() {
 	fmt.Println()
 
 	// Parse relay addresses for manual connection
-	relayInfos := parseRelayAddrs(cfg.Relay.Addresses)
+	relayInfos, err := p2pnet.ParseRelayAddrs(cfg.Relay.Addresses)
+	if err != nil {
+		log.Fatalf("Failed to parse relay addresses: %v", err)
+	}
 
 	// Connect to the relay
 	for _, ai := range relayInfos {
@@ -190,7 +196,6 @@ func main() {
 	// Connect to bootstrap peers
 	var bootstrapPeers []ma.Multiaddr
 	if len(cfg.Discovery.BootstrapPeers) > 0 {
-		// Use custom bootstrap peers from config
 		for _, addr := range cfg.Discovery.BootstrapPeers {
 			maddr, err := ma.NewMultiaddr(addr)
 			if err != nil {
@@ -200,7 +205,6 @@ func main() {
 			bootstrapPeers = append(bootstrapPeers, maddr)
 		}
 	} else {
-		// Use default libp2p bootstrap peers
 		bootstrapPeers = dht.DefaultBootstrapPeers
 	}
 
@@ -239,7 +243,7 @@ func main() {
 
 	// Periodically print status
 	go func() {
-		time.Sleep(10 * time.Second) // initial wait
+		time.Sleep(10 * time.Second)
 		for {
 			fmt.Println()
 			fmt.Println("--- Status ---")
@@ -267,41 +271,12 @@ func main() {
 	}()
 
 	fmt.Println()
-	fmt.Println("✅ Home node is running and waiting for pings!")
-	fmt.Println("   Share your Peer ID with the client/phone app.")
+	fmt.Println("✅ Home node is running!")
+	fmt.Println("   Share your Peer ID with clients.")
 	fmt.Println("   Press Ctrl+C to stop.")
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 	fmt.Println("\nShutting down...")
-}
-
-func parseRelayAddrs(relayAddrs []string) []peer.AddrInfo {
-	var infos []peer.AddrInfo
-	seen := make(map[peer.ID]bool)
-	for _, s := range relayAddrs {
-		maddr, err := ma.NewMultiaddr(s)
-		if err != nil {
-			fmt.Printf("⚠️  Invalid relay addr %s: %v\n", s, err)
-			continue
-		}
-		ai, err := peer.AddrInfoFromP2pAddr(maddr)
-		if err != nil {
-			fmt.Printf("⚠️  Cannot parse relay addr %s: %v\n", s, err)
-			continue
-		}
-		if !seen[ai.ID] {
-			seen[ai.ID] = true
-			infos = append(infos, *ai)
-		} else {
-			// Merge addrs for same peer
-			for i := range infos {
-				if infos[i].ID == ai.ID {
-					infos[i].Addrs = append(infos[i].Addrs, ai.Addrs...)
-				}
-			}
-		}
-	}
-	return infos
 }

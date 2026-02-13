@@ -10,157 +10,76 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 
-	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
+	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
 
-// loadOrCreateIdentity loads an existing key file or creates a new one
-func loadOrCreateIdentity(path string) (crypto.PrivKey, error) {
-	if path == "" {
-		// No key file specified - generate ephemeral identity
-		priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
-		return priv, err
-	}
-
-	// Try to load existing key
-	if data, err := os.ReadFile(path); err == nil {
-		return crypto.UnmarshalPrivateKey(data)
-	}
-
-	// Create new key and save it
-	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := crypto.MarshalPrivateKey(priv)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return nil, err
-	}
-
-	return priv, nil
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <HOME_PEER_ID>")
+func runPing(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: peerup ping <peer-id-or-name>")
 		fmt.Println()
-		fmt.Println("Example:")
-		fmt.Println("  go run main.go 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL")
+		fmt.Println("Examples:")
+		fmt.Println("  peerup ping 12D3KooWLutPZ...")
+		fmt.Println("  peerup ping home              # using name from config")
 		os.Exit(1)
 	}
 
-	targetPeerIDStr := os.Args[1]
-	targetPeerID, err := peer.Decode(targetPeerIDStr)
-	if err != nil {
-		log.Fatalf("Invalid peer ID: %v", err)
-	}
+	target := args[0]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("=== Client Node (Ping Sender) ===")
+	fmt.Println("=== Ping via P2P ===")
 	fmt.Println()
 
 	// Load configuration
 	cfg, err := config.LoadClientNodeConfig("client-node.yaml")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v\n", err)
-		fmt.Println("Please create client-node.yaml from the sample:")
-		fmt.Println("  cp configs/client-node.sample.yaml client-node.yaml")
-		fmt.Println("  # Edit the file with your relay server details")
-		os.Exit(1)
+		log.Fatalf("Config error: %v", err)
 	}
 
-	// Validate configuration
-	if err := config.ValidateClientNodeConfig(cfg); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
-	}
-
-	fmt.Printf("Loaded configuration from client-node.yaml\n")
-	fmt.Printf("Rendezvous: %s\n", cfg.Discovery.Rendezvous)
-	fmt.Println()
-
-	// Parse relay addresses
-	relayInfos := parseRelayAddrs(cfg.Relay.Addresses)
-
-	// Load authorized keys if connection gating is enabled
-	var gater *auth.AuthorizedPeerGater
-	if cfg.Security.EnableConnectionGating {
-		if cfg.Security.AuthorizedKeysFile == "" {
-			log.Fatalf("Connection gating enabled but no authorized_keys_file specified")
-		}
-
-		authorizedPeers, err := auth.LoadAuthorizedKeys(cfg.Security.AuthorizedKeysFile)
-		if err != nil {
-			log.Fatalf("Failed to load authorized keys: %v", err)
-		}
-
-		if len(authorizedPeers) == 0 {
-			fmt.Println("⚠️  WARNING: authorized_keys file is empty - you won't be able to connect to any peers!")
-			fmt.Printf("   Add home node's peer ID to %s\n", cfg.Security.AuthorizedKeysFile)
-		} else {
-			fmt.Printf("✅ Loaded %d authorized peer(s) from %s\n", len(authorizedPeers), cfg.Security.AuthorizedKeysFile)
-		}
-
-		gater = auth.NewAuthorizedPeerGater(authorizedPeers, log.Default())
-	} else {
-		fmt.Println("⚠️  WARNING: Connection gating is DISABLED - this is not recommended for production!")
-	}
-	fmt.Println()
-
-	// Load or create identity
-	priv, err := loadOrCreateIdentity(cfg.Identity.KeyFile)
+	// Create P2P network
+	p2pNetwork, err := p2pnet.New(&p2pnet.Config{
+		KeyFile:            cfg.Identity.KeyFile,
+		Config:             &config.Config{Network: cfg.Network},
+		EnableRelay:        true,
+		RelayAddrs:         cfg.Relay.Addresses,
+		ForcePrivate:       cfg.Network.ForcePrivateReachability,
+		EnableNATPortMap:   true,
+		EnableHolePunching: true,
+	})
 	if err != nil {
-		log.Fatalf("Identity error: %v", err)
+		log.Fatalf("P2P network error: %v", err)
+	}
+	defer p2pNetwork.Close()
+
+	// Load names from config
+	if cfg.Names != nil {
+		if err := p2pNetwork.LoadNames(cfg.Names); err != nil {
+			log.Printf("⚠️  Failed to load names: %v", err)
+		}
 	}
 
-	// Build libp2p host options
-	hostOpts := []libp2p.Option{
-		libp2p.Identity(priv),
-		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
-		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.Transport(libp2pquic.NewTransport),
-		libp2p.NATPortMap(),
-		libp2p.EnableHolePunching(),
-		libp2p.EnableAutoRelayWithStaticRelays(relayInfos),
-	}
-
-	// Add connection gater if enabled
-	if gater != nil {
-		hostOpts = append(hostOpts, libp2p.ConnectionGater(gater))
-	}
-
-	// Force private reachability if configured
-	if cfg.Network.ForcePrivateReachability {
-		hostOpts = append(hostOpts, libp2p.ForceReachabilityPrivate())
-	}
-
-	// Create the libp2p host
-	h, err := libp2p.New(hostOpts...)
+	// Resolve target
+	targetPeerID, err := p2pNetwork.ResolveName(target)
 	if err != nil {
-		log.Fatalf("Failed to create host: %v", err)
+		log.Fatalf("Cannot resolve target %q: %v", target, err)
 	}
-	defer h.Close()
+
+	h := p2pNetwork.Host()
 
 	fmt.Printf("📱 Client Peer ID: %s\n", h.ID())
-	fmt.Printf("🎯 Target Home Peer: %s\n", targetPeerID)
+	fmt.Printf("🎯 Target Peer: %s\n", targetPeerID)
+	if target != targetPeerID.String() {
+		fmt.Printf("   (resolved from name %q)\n", target)
+	}
 	fmt.Println()
 
 	// Bootstrap DHT
@@ -176,7 +95,6 @@ func main() {
 	// Connect to bootstrap peers
 	var bootstrapPeers []ma.Multiaddr
 	if len(cfg.Discovery.BootstrapPeers) > 0 {
-		// Use custom bootstrap peers from config
 		for _, addr := range cfg.Discovery.BootstrapPeers {
 			maddr, err := ma.NewMultiaddr(addr)
 			if err != nil {
@@ -186,7 +104,6 @@ func main() {
 			bootstrapPeers = append(bootstrapPeers, maddr)
 		}
 	} else {
-		// Use default libp2p bootstrap peers
 		bootstrapPeers = dht.DefaultBootstrapPeers
 	}
 
@@ -208,7 +125,11 @@ func main() {
 	wg.Wait()
 	fmt.Printf("Connected to %d bootstrap peers\n", connected)
 
-	// Connect to our dedicated relay
+	// Connect to relay
+	relayInfos, err := p2pnet.ParseRelayAddrs(cfg.Relay.Addresses)
+	if err != nil {
+		log.Fatalf("Failed to parse relay addresses: %v", err)
+	}
 	fmt.Println("Connecting to dedicated relay...")
 	for _, ai := range relayInfos {
 		if err := h.Connect(ctx, ai); err != nil {
@@ -219,13 +140,13 @@ func main() {
 	}
 	fmt.Println()
 
-	// Search for the home node via DHT
+	// Search for the target via DHT
 	routingDiscovery := drouting.NewRoutingDiscovery(kdht)
 
-	fmt.Println("🔍 Searching for home node via rendezvous discovery...")
+	fmt.Println("🔍 Searching for target peer via rendezvous discovery...")
 	fmt.Println("   (This can take 30-60 seconds)")
 
-	// Method 1: Try rendezvous discovery
+	// Method 1: Rendezvous discovery
 	var targetAddrInfo *peer.AddrInfo
 	discoverCtx, discoverCancel := context.WithTimeout(ctx, 60*time.Second)
 
@@ -235,7 +156,7 @@ func main() {
 	} else {
 		for p := range peerCh {
 			if p.ID == targetPeerID && len(p.Addrs) > 0 {
-				fmt.Printf("✅ Found home node via rendezvous!\n")
+				fmt.Printf("✅ Found target peer via rendezvous!\n")
 				targetAddrInfo = &p
 				break
 			}
@@ -249,7 +170,7 @@ func main() {
 	}
 	discoverCancel()
 
-	// Method 2: Direct DHT lookup (always try if we don't have addresses)
+	// Method 2: Direct DHT lookup
 	if targetAddrInfo == nil || len(targetAddrInfo.Addrs) == 0 {
 		fmt.Println()
 		fmt.Println("🔍 Trying direct DHT peer routing lookup...")
@@ -257,19 +178,19 @@ func main() {
 		pi, err := kdht.FindPeer(lookupCtx, targetPeerID)
 		lookupCancel()
 		if err != nil {
-			fmt.Printf("❌ Could not find home node: %v\n", err)
+			fmt.Printf("❌ Could not find target peer: %v\n", err)
 			fmt.Println()
 			fmt.Println("Make sure the home node is running and has had time to")
 			fmt.Println("register with the DHT (give it at least 3-5 minutes).")
 			os.Exit(1)
 		}
 		targetAddrInfo = &pi
-		fmt.Printf("✅ Found home node via DHT lookup! (%d addresses)\n", len(pi.Addrs))
+		fmt.Printf("✅ Found target peer via DHT lookup! (%d addresses)\n", len(pi.Addrs))
 	}
 
 	// Show discovered addresses
 	fmt.Println()
-	fmt.Println("Home node addresses:")
+	fmt.Println("Target peer addresses:")
 	for _, addr := range targetAddrInfo.Addrs {
 		label := "direct"
 		if strings.Contains(addr.String(), "p2p-circuit") {
@@ -278,11 +199,10 @@ func main() {
 		fmt.Printf("  [%s] %s\n", label, addr)
 	}
 
-	// Connect to the home node
+	// Connect to the target
 	fmt.Println()
-	fmt.Println("📡 Connecting to home node...")
+	fmt.Println("📡 Connecting to target peer...")
 
-	// First try direct addresses from DHT
 	connectCtx, connectCancel := context.WithTimeout(ctx, 15*time.Second)
 	err = h.Connect(connectCtx, *targetAddrInfo)
 	connectCancel()
@@ -292,31 +212,14 @@ func main() {
 		fmt.Println()
 		fmt.Println("📡 Trying via relay circuit...")
 
-		// Manually construct relay circuit addresses
-		// Format: <relay_addr>/p2p/<relay_id>/p2p-circuit/p2p/<target_id>
-		var circuitAddrs []ma.Multiaddr
-		for _, ri := range relayInfos {
-			for _, raddr := range ri.Addrs {
-				circuitStr := fmt.Sprintf("%s/p2p/%s/p2p-circuit/p2p/%s",
-					raddr.String(), ri.ID.String(), targetPeerID.String())
-				caddr, err := ma.NewMultiaddr(circuitStr)
-				if err != nil {
-					fmt.Printf("   ⚠️  Bad circuit addr: %v\n", err)
-					continue
-				}
-				circuitAddrs = append(circuitAddrs, caddr)
-				fmt.Printf("   Trying: %s\n", circuitStr)
-			}
+		// Add relay addresses for the target peer
+		if err := p2pNetwork.AddRelayAddressesForPeer(cfg.Relay.Addresses, targetPeerID); err != nil {
+			log.Fatalf("Failed to add relay addresses: %v", err)
 		}
 
-		// Create AddrInfo with circuit addresses
-		circuitInfo := peer.AddrInfo{
-			ID:    targetPeerID,
-			Addrs: circuitAddrs,
-		}
-
+		// Retry connection
 		connectCtx2, connectCancel2 := context.WithTimeout(ctx, 30*time.Second)
-		err = h.Connect(connectCtx2, circuitInfo)
+		err = h.Connect(connectCtx2, peer.AddrInfo{ID: targetPeerID})
 		connectCancel2()
 		if err != nil {
 			log.Fatalf("❌ Failed to connect via relay: %v", err)
@@ -343,7 +246,6 @@ func main() {
 		log.Fatalf("❌ Failed to open stream: %v", err)
 	}
 
-	// Check if this particular stream is relayed or direct
 	streamConnType := "DIRECT"
 	if s.Conn().Stat().Limited {
 		streamConnType = "RELAYED"
@@ -355,7 +257,6 @@ func main() {
 		log.Fatalf("❌ Failed to send ping: %v", err)
 	}
 
-	// Read response
 	reader := bufio.NewReader(s)
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -368,7 +269,7 @@ func main() {
 
 	s.Close()
 
-	// If connected via relay, wait a bit to see if hole-punching upgrades the connection
+	// If connected via relay, wait to see if hole-punching upgrades
 	if streamConnType == "RELAYED" {
 		fmt.Println()
 		fmt.Println("⏳ Connected via relay. Waiting 15s to see if hole-punching upgrades to direct...")
@@ -385,11 +286,9 @@ func main() {
 		if !upgraded {
 			fmt.Println("ℹ️  Still relayed. Hole-punching didn't upgrade in time.")
 			fmt.Println("   This is normal with Starlink CGNAT.")
-			fmt.Println("   Relay still works for small messages.")
-			fmt.Println("   For large transfers, consider using your own router (bypass mode).")
 		}
 
-		// Try sending another ping over the potentially upgraded connection
+		// Second ping over potentially upgraded connection
 		fmt.Println()
 		fmt.Println("🏓 Sending second PING (may use upgraded connection)...")
 		s2Ctx, s2Cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -414,30 +313,4 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("Done!")
-}
-
-func parseRelayAddrs(relayAddrs []string) []peer.AddrInfo {
-	var infos []peer.AddrInfo
-	seen := make(map[peer.ID]bool)
-	for _, s := range relayAddrs {
-		maddr, err := ma.NewMultiaddr(s)
-		if err != nil {
-			continue
-		}
-		ai, err := peer.AddrInfoFromP2pAddr(maddr)
-		if err != nil {
-			continue
-		}
-		if !seen[ai.ID] {
-			seen[ai.ID] = true
-			infos = append(infos, *ai)
-		} else {
-			for i := range infos {
-				if infos[i].ID == ai.ID {
-					infos[i].Addrs = append(infos[i].Addrs, ai.Addrs...)
-				}
-			}
-		}
-	}
-	return infos
 }

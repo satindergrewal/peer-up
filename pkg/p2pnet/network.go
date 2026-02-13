@@ -8,6 +8,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ma "github.com/multiformats/go-multiaddr"
@@ -70,7 +71,7 @@ func New(cfg *Config) (*Network, error) {
 	// Add relay support if enabled
 	if cfg.EnableRelay {
 		// Parse relay addresses
-		relayInfos, err := parseRelayAddrs(cfg.RelayAddrs)
+		relayInfos, err := ParseRelayAddrs(cfg.RelayAddrs)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("failed to parse relay addresses: %w", err)
@@ -161,14 +162,34 @@ func (n *Network) RegisterName(name string, peerID peer.ID) error {
 	return n.nameResolver.Register(name, peerID)
 }
 
+// LoadNames loads name-to-peer-ID mappings from a string map (e.g., from YAML config)
+func (n *Network) LoadNames(names map[string]string) error {
+	return n.nameResolver.LoadFromMap(names)
+}
+
+// AddRelayAddressesForPeer adds relay circuit addresses for a target peer to the peerstore.
+// This allows the client to reach the target peer through the configured relay servers.
+func (n *Network) AddRelayAddressesForPeer(relayAddrs []string, targetPeerID peer.ID) error {
+	for _, relayAddr := range relayAddrs {
+		circuitAddr := relayAddr + "/p2p-circuit/p2p/" + targetPeerID.String()
+		addrInfo, err := peer.AddrInfoFromString(circuitAddr)
+		if err != nil {
+			return fmt.Errorf("failed to parse relay circuit address %s: %w", circuitAddr, err)
+		}
+		n.host.Peerstore().AddAddrs(addrInfo.ID, addrInfo.Addrs, peerstore.PermanentAddrTTL)
+	}
+	return nil
+}
+
 // Close shuts down the network
 func (n *Network) Close() error {
 	n.cancel()
 	return n.host.Close()
 }
 
-// parseRelayAddrs parses relay multiaddrs into peer.AddrInfo
-func parseRelayAddrs(relayAddrs []string) ([]peer.AddrInfo, error) {
+// ParseRelayAddrs parses relay multiaddrs into peer.AddrInfo slices.
+// It deduplicates by peer ID and merges addresses for the same relay peer.
+func ParseRelayAddrs(relayAddrs []string) ([]peer.AddrInfo, error) {
 	var infos []peer.AddrInfo
 	seen := make(map[peer.ID]bool)
 
