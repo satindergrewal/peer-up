@@ -7,17 +7,17 @@ This guide walks through testing the complete peer-up system with SSH service ex
 Connect to your home computer's SSH server from a client device (laptop/phone) through the P2P network, traversing CGNAT/NAT using a relay server.
 
 ```
-[Client Node] <--P2P--> [Relay Server] <--P2P--> [Home Node] --TCP--> [SSH Server :22]
-   (Laptop)              (VPS/Cloud)           (Home PC behind CGNAT)
+[Client]  ──peerup proxy──▶  [Relay Server]  ◀──peerup serve──  [Home Server]  ──TCP──▶  [SSH :22]
+ (Laptop)                       (VPS)                         (Behind CGNAT)
 ```
 
 ## Prerequisites
 
 ### 1. Three Machines/Terminals
 
-- **Relay Server**: VPS with public IP (DigitalOcean, AWS, etc.)
-- **Home Node**: Your home computer behind CGNAT/NAT
-- **Client Node**: Laptop or another device
+- **Relay Server**: VPS with public IP (Linode, DigitalOcean, AWS, etc.)
+- **Home Server**: Your home computer behind CGNAT/NAT (runs `peerup serve`)
+- **Client**: Laptop or another device (runs `peerup proxy`)
 
 ### 2. SSH Server Running
 
@@ -32,28 +32,26 @@ sudo systemctl start sshd
 # macOS - enable in System Preferences > Sharing > Remote Login
 ```
 
-### 3. Configurations Prepared
+### 3. Build peerup
 
 ```bash
-# Create config files from samples
-cp configs/relay-server.sample.yaml relay-server/relay-server.yaml
-cp configs/home-node.sample.yaml home-node/home-node.yaml
-cp configs/client-node.sample.yaml client-node/client-node.yaml
+# Build peerup (single binary for everything)
+go build -o peerup ./cmd/peerup
 ```
 
 ---
 
-## Step 1: Start Relay Server
+## Step 1: Deploy Relay Server
 
-### On VPS (Relay Server)
+See [relay-server/README.md](../relay-server/README.md) for the full VPS setup guide.
+
+Quick version:
 
 ```bash
-cd peer-up/relay-server
-
-# Build
+cd relay-server
+cp ../configs/relay-server.sample.yaml relay-server.yaml
+# Edit relay-server.yaml if needed (defaults are fine)
 go build -o relay-server
-
-# Run (it will create relay_server.key automatically)
 ./relay-server
 ```
 
@@ -73,269 +71,110 @@ go build -o relay-server
 
 ---
 
-## Step 2: Configure Home Node
+## Step 2: Set Up Home Server
 
-### Edit `home-node/home-node.yaml`
+### Run the setup wizard
+
+```bash
+./peerup init
+```
+
+The wizard will:
+1. Create `~/.config/peerup/` directory
+2. Ask for your relay server address
+3. Generate an Ed25519 identity key
+4. Display your **Peer ID** (share this with peers who need to authorize you)
+5. Write `config.yaml`, `identity.key`, and `authorized_keys`
+
+### Configure services
+
+Edit `~/.config/peerup/config.yaml` on the home server:
 
 ```yaml
-identity:
-  key_file: "home_node.key"
-
 network:
-  listen_addresses:
-    - "/ip4/0.0.0.0/tcp/9100"
-    - "/ip4/0.0.0.0/udp/9100/quic-v1"
-  force_private_reachability: true  # CRITICAL for CGNAT
+  force_private_reachability: true  # CRITICAL for CGNAT (Starlink, etc.)
 
-relay:
-  # REPLACE with your relay server details from Step 1
-  addresses:
-    - "/ip4/YOUR_VPS_IP/tcp/7777/p2p/12D3KooWABC...XYZ"
-  reservation_interval: "2m"
-
-discovery:
-  rendezvous: "my-private-p2p-network"
-  bootstrap_peers: []
-
-security:
-  authorized_keys_file: "authorized_keys"
-  enable_connection_gating: false  # Set true after adding client peer ID
-
-protocols:
-  ping_pong:
-    enabled: true
-    id: "/pingpong/1.0.0"
-
-# IMPORTANT: Enable SSH service
+# Enable SSH service
 services:
   ssh:
     enabled: true
     local_address: "localhost:22"
 ```
 
-### Start Home Node
+### Start the server
 
 ```bash
-cd home-node
-
-# Option 1: Use refactored version (recommended)
-go build -o home-node-refactored main-refactored.go
-./home-node-refactored
-
-# Option 2: Use original version
-go build -o home-node
-./home-node
+./peerup serve
 ```
 
 **Expected output:**
 ```
-=== Home Node (Refactored with pkg/p2pnet) ===
-Loaded configuration from home-node.yaml
-Rendezvous: my-private-p2p-network
-
+Loaded configuration from ~/.config/peerup/config.yaml
 🏠 Peer ID: 12D3KooWHOME...ABC
 ✅ Connected to relay 12D3KooWABC...
-Waiting for AutoRelay to establish reservations...
 ✅ Relay address: /ip4/YOUR_VPS_IP/tcp/7777/p2p/12D3KooWABC.../p2p-circuit/p2p/12D3KooWHOME...ABC
 ✅ Registered service: ssh (protocol: /peerup/ssh/1.0.0, local: localhost:22)
 ```
 
-**Save the Home Node Peer ID**: `12D3KooWHOME...ABC`
+**Save the Home Server Peer ID**: `12D3KooWHOME...ABC`
 
 ---
 
-## Step 3: Configure Client Node
+## Step 3: Set Up Client
 
-### Edit `client-node/client-node.yaml`
-
-```yaml
-identity:
-  key_file: ""  # Ephemeral identity (or set path for persistent)
-
-network:
-  listen_addresses:
-    - "/ip4/0.0.0.0/tcp/0"  # Ephemeral port
-    - "/ip4/0.0.0.0/udp/0/quic-v1"
-  force_private_reachability: false
-
-relay:
-  # SAME relay as home-node
-  addresses:
-    - "/ip4/YOUR_VPS_IP/tcp/7777/p2p/12D3KooWABC...XYZ"
-  reservation_interval: "2m"
-
-discovery:
-  rendezvous: "my-private-p2p-network"  # MUST MATCH home-node
-  bootstrap_peers: []
-
-security:
-  authorized_keys_file: "authorized_keys"
-  enable_connection_gating: false  # Disable for testing
-
-protocols:
-  ping_pong:
-    enabled: true
-    id: "/pingpong/1.0.0"
-
-# Map "home" to your home-node peer ID
-names:
-  home: "12D3KooWHOME...ABC"  # From Step 2
-```
-
-### Start Client Node
+### Run the setup wizard
 
 ```bash
-cd client-node
-
-go build -o client-node
-./client-node
+./peerup init
 ```
 
-**Expected output:**
+### Authorize peers
+
+Add the home server's Peer ID to your `authorized_keys`:
+
+```bash
+# Edit ~/.config/peerup/authorized_keys
+# Add the home server's peer ID:
+12D3KooWHOME...ABC  # home-server
 ```
-=== Client Node ===
-📡 Searching for peers on rendezvous: my-private-p2p-network
-✅ Found peer: 12D3KooWHOME...ABC
-🔗 Connecting to peer via relay...
-✅ Connected!
-📤 Sending ping to 12D3KooWHOME...ABC
-📥 Received: pong
+
+Do the same on the home server — add the client's Peer ID to its `authorized_keys`.
+
+### Add friendly name
+
+Edit `~/.config/peerup/config.yaml` on the client:
+
+```yaml
+# Map friendly names to peer IDs:
+names:
+  home: "12D3KooWHOME...ABC"  # From Step 2
 ```
 
 ---
 
 ## Step 4: Test SSH Connection via P2P
 
-### Option A: Using Manual Script (Recommended)
-
-Create `test-ssh-connection.go` in `client-node/`:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"io"
-	"log"
-	"net"
-	"os"
-
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/satindergrewal/peer-up/internal/config"
-	"github.com/satindergrewal/peer-up/pkg/p2pnet"
-)
-
-func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <home-node-peer-id>", os.Args[0])
-	}
-
-	homeNodeID, err := peer.Decode(os.Args[1])
-	if err != nil {
-		log.Fatalf("Invalid peer ID: %v", err)
-	}
-
-	// Load config
-	cfg, err := config.LoadClientNodeConfig("client-node.yaml")
-	if err != nil {
-		log.Fatalf("Config error: %v", err)
-	}
-
-	// Create P2P network with relay support
-	net, err := p2pnet.New(&p2pnet.Config{
-		KeyFile:            cfg.Identity.KeyFile,
-		Config:             &config.Config{Network: cfg.Network},
-		EnableRelay:        true,
-		RelayAddrs:         cfg.Relay.Addresses,
-		EnableNATPortMap:   true,
-		EnableHolePunching: true,
-	})
-	if err != nil {
-		log.Fatalf("P2P network error: %v", err)
-	}
-	defer net.Close()
-
-	fmt.Printf("🆔 Client Peer ID: %s\n", net.PeerID())
-
-	// Connect to home node via relay
-	ctx := context.Background()
-	h := net.Host()
-
-	// Wait for relay connection
-	fmt.Println("🔗 Connecting to home node via relay...")
-	// Discovery would happen here normally, for now assume we know the peer
-
-	// Open SSH service stream
-	fmt.Println("🌐 Opening SSH service stream...")
-	sshConn, err := net.ConnectToService(homeNodeID, "ssh")
-	if err != nil {
-		log.Fatalf("Failed to connect to SSH service: %v", err)
-	}
-	defer sshConn.Close()
-
-	fmt.Println("✅ Connected to SSH service!")
-	fmt.Println("📡 Creating local TCP proxy on localhost:2222")
-
-	// Create local listener
-	listener, err := net.Listen("tcp", "localhost:2222")
-	if err != nil {
-		log.Fatalf("Failed to create listener: %v", err)
-	}
-	defer listener.Close()
-
-	fmt.Println("✅ SSH proxy ready!")
-	fmt.Println("\n💡 Connect via SSH:")
-	fmt.Println("   ssh -p 2222 username@localhost")
-	fmt.Println("\nPress Ctrl+C to stop.")
-
-	// Accept connections and forward to P2P
-	for {
-		localConn, err := listener.Accept()
-		if err != nil {
-			log.Printf("Accept error: %v", err)
-			continue
-		}
-
-		go func(lc net.Conn) {
-			defer lc.Close()
-
-			// Open new stream for each connection
-			sshStream, err := net.ConnectToService(homeNodeID, "ssh")
-			if err != nil {
-				log.Printf("Failed to open SSH stream: %v", err)
-				return
-			}
-			defer sshStream.Close()
-
-			// Bidirectional copy
-			errCh := make(chan error, 2)
-			go func() {
-				_, err := io.Copy(sshStream, lc)
-				errCh <- err
-			}()
-			go func() {
-				_, err := io.Copy(lc, sshStream)
-				errCh <- err
-			}()
-
-			<-errCh
-		}(localConn)
-	}
-}
-```
-
-### Run the test:
+### Test connectivity first
 
 ```bash
-cd client-node
-go run test-ssh-connection.go 12D3KooWHOME...ABC
+./peerup ping home
 ```
 
-### Connect via SSH:
+You should see a successful ping/pong response.
+
+### Start the SSH proxy
 
 ```bash
-# In another terminal
+./peerup proxy home ssh 2222
+```
+
+This creates a local TCP listener on port 2222 that tunnels through the P2P network to the home server's SSH service.
+
+### Connect via SSH
+
+In another terminal:
+
+```bash
 ssh -p 2222 your_username@localhost
 ```
 
@@ -343,19 +182,43 @@ You should see your home computer's SSH prompt!
 
 ---
 
-## Step 5: Verify End-to-End
+## Step 5: Test Other Services
 
-### On Home Node - Check Logs
+### XRDP (Remote Desktop)
 
-You should see:
+On the home server, enable XRDP in config:
+
+```yaml
+services:
+  ssh:
+    enabled: true
+    local_address: "localhost:22"
+  xrdp:
+    enabled: true
+    local_address: "localhost:3389"
 ```
-📥 Incoming ssh connection from 12D3KooWCLIENT...
-✅ Connected to local service localhost:22
+
+Restart `peerup serve`, then on the client:
+
+```bash
+./peerup proxy home xrdp 13389
+# Then connect:
+xfreerdp /v:localhost:13389 /u:your_username
 ```
 
-### On Client Node
+### Any TCP Service
 
-You should see successful SSH connection and be able to run commands on your home computer.
+```yaml
+services:
+  web:
+    enabled: true
+    local_address: "localhost:8080"
+```
+
+```bash
+./peerup proxy home web 8080
+# Then: curl http://localhost:8080
+```
 
 ---
 
@@ -370,7 +233,7 @@ You should see successful SSH connection and be able to run commands on your hom
 **Fix:**
 - Verify VPS firewall allows TCP 7777 and UDP 7777
 - Check relay server is actually running
-- Verify relay peer ID is correct in configs
+- Verify relay peer ID is correct in config
 
 ### No Relay Address
 
@@ -379,7 +242,7 @@ You should see successful SSH connection and be able to run commands on your hom
 ```
 
 **Fix:**
-- Ensure `force_private_reachability: true` in home-node config
+- Ensure `force_private_reachability: true` in home server config
 - Wait 10-15 seconds for AutoRelay
 - Check relay server logs for reservation requests
 
@@ -390,8 +253,8 @@ Failed to connect to SSH service: protocol not supported
 ```
 
 **Fix:**
-- Verify `services.ssh.enabled: true` in home-node.yaml
-- Check home-node logs for "Registered service: ssh"
+- Verify `services.ssh.enabled: true` in home server config
+- Check server logs for "Registered service: ssh"
 - Ensure SSH protocol ID matches: `/peerup/ssh/1.0.0`
 
 ### Connection Refused on localhost:22
@@ -405,6 +268,16 @@ Failed to connect to local service localhost:22
 - Check: `sudo systemctl status sshd`
 - Verify SSH is listening: `netstat -tlnp | grep :22`
 
+### Cannot Resolve Target
+
+```
+Cannot resolve target "home"
+```
+
+**Fix:**
+- Add name mapping to `names:` section in client config
+- Or use the full peer ID directly: `peerup proxy 12D3KooW... ssh 2222`
+
 ### Discovery Not Working
 
 ```
@@ -412,27 +285,21 @@ Failed to connect to local service localhost:22
 ```
 
 **Fix:**
-- Verify both nodes use SAME `rendezvous` string
-- Check DHT is bootstrapped (should see "Connected to X bootstrap peers")
+- Verify both nodes use the same `rendezvous` string in config
+- Check DHT is bootstrapped
 - Wait 30-60 seconds for DHT propagation
 
 ---
 
-## Next Steps
-
-Once SSH works:
-
-1. **Enable Security**: Add peer IDs to `authorized_keys` files
-2. **Test Other Services**: Try HTTP, SMB, custom protocols
-3. **Production Setup**: Use persistent identities, configure firewall rules
-4. **Mobile App**: Build iOS/Android clients using the library
-
 ## Success Criteria
 
-✅ Relay server running and accessible
-✅ Home node gets relay address with `/p2p-circuit`
-✅ Client finds home node via DHT
-✅ SSH service stream opens successfully
-✅ You can SSH into your home computer from anywhere
+- [ ] Relay server running and accessible
+- [ ] Home server gets relay address with `/p2p-circuit`
+- [ ] `peerup ping home` succeeds from client
+- [ ] `peerup proxy home ssh 2222` creates local listener
+- [ ] `ssh -p 2222 user@localhost` connects to home computer
+- [ ] XRDP / other TCP services also work
 
-**You've now successfully traversed CGNAT/NAT using libp2p relay!** 🎉
+---
+
+**Last Updated**: 2026-02-14

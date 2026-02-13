@@ -4,8 +4,8 @@ This document describes the technical architecture of peer-up, from current impl
 
 ## Table of Contents
 
-- [Current Architecture (Phase 1-3)](#current-architecture-phase-1-3)
-- [Target Architecture (Phase 4+)](#target-architecture-phase-4)
+- [Current Architecture (Phase 4A Complete)](#current-architecture-phase-4a-complete)
+- [Target Architecture (Phase 4B+)](#target-architecture-phase-4b)
 - [Core Concepts](#core-concepts)
 - [Security Model](#security-model)
 - [Naming System](#naming-system)
@@ -14,33 +14,56 @@ This document describes the technical architecture of peer-up, from current impl
 
 ---
 
-## Current Architecture (Phase 1-3)
+## Current Architecture (Phase 4A Complete)
 
 ### Component Overview
 
 ```
 peer-up/
-├── relay-server/        # Circuit relay v2 (VPS)
-│   └── main.go          # Relay with optional authentication
+├── cmd/
+│   ├── peerup/              # Single binary (init, serve, proxy, ping)
+│   │   ├── main.go
+│   │   ├── cmd_init.go
+│   │   ├── cmd_serve.go
+│   │   ├── cmd_proxy.go
+│   │   └── cmd_ping.go
+│   └── keytool/             # Key management CLI
+│       ├── main.go
+│       └── commands/
 │
-├── home-node/           # Service host (behind CGNAT)
-│   └── main.go          # DHT advertiser, protocol responder
-│
-├── client-node/         # Service consumer (mobile/laptop)
-│   └── main.go          # DHT searcher, protocol initiator
+├── pkg/p2pnet/              # Importable P2P library
+│   ├── network.go           # Core network setup, relay helpers, name resolution
+│   ├── service.go           # Service registry and management
+│   ├── proxy.go             # Bidirectional TCP↔Stream proxy with half-close
+│   ├── naming.go            # Local name resolution (name → peer ID)
+│   └── identity.go          # Ed25519 identity management
 │
 ├── internal/
-│   ├── config/          # YAML configuration loading
+│   ├── config/              # YAML configuration loading
 │   │   ├── config.go
 │   │   └── loader.go
-│   └── auth/            # SSH-style authentication
+│   └── auth/                # SSH-style authentication
 │       ├── authorized_keys.go
-│       └── gater.go     # ConnectionGater implementation
+│       └── gater.go         # ConnectionGater implementation
 │
-└── cmd/
-    └── keytool/         # Key management CLI
-        ├── main.go
-        └── commands/
+├── relay-server/            # Circuit relay v2 (VPS, separate module)
+│   ├── main.go
+│   ├── setup-linode.sh
+│   └── relay-server.service
+│
+├── configs/                 # Sample configuration files
+│   ├── peerup.sample.yaml
+│   ├── relay-server.sample.yaml
+│   └── authorized_keys.sample
+│
+├── docs/                    # Project documentation
+│   ├── ARCHITECTURE.md      # This file
+│   ├── FAQ.md
+│   ├── ROADMAP.md
+│   └── TESTING.md
+│
+└── examples/                # Example implementations
+    └── basic-service/
 ```
 
 ### Network Topology (Current)
@@ -119,43 +142,33 @@ Client Attempts Connection to Home Node
 
 ---
 
-## Target Architecture (Phase 4+)
+## Target Architecture (Phase 4B+)
 
-### Library-First Structure
+### Planned Additions
+
+Building on the current structure, future phases will add:
 
 ```
 peer-up/
-├── pkg/p2pnet/              # 🆕 Core library (importable)
-│   ├── network.go           # P2P network setup
-│   ├── service.go           # Service registry
-│   ├── proxy.go             # TCP↔Stream proxy
-│   ├── naming.go            # Name resolution
-│   └── federation.go        # Network peering
-│
-├── internal/                # Internal packages
-│   ├── config/              # Configuration (existing)
-│   ├── auth/                # Authentication (existing)
-│   └── tun/                 # 🆕 TUN/TAP interface
-│
 ├── cmd/
-│   ├── gateway/             # 🆕 Multi-mode daemon
-│   ├── keytool/             # Key management (existing)
-│   └── peerup/              # 🆕 CLI tool
+│   ├── peerup/              # ✅ Single binary (init, serve, proxy, ping)
+│   ├── keytool/             # ✅ Key management CLI
+│   └── gateway/             # 🆕 Phase 4C: Multi-mode daemon (SOCKS, DNS, TUN)
 │
-├── examples/                # 🆕 Example implementations
-│   ├── home-node/           # Moved from root
-│   ├── client-node/         # Moved from root
-│   └── custom-service/      # Example: custom protocol
+├── pkg/p2pnet/              # ✅ Core library (importable)
+│   ├── ...existing...
+│   └── federation.go        # 🆕 Phase 4H: Network peering
 │
-├── relay-server/            # Relay (existing)
-├── mobile/                  # 🆕 Mobile apps
+├── internal/
+│   ├── config/              # ✅ Configuration
+│   ├── auth/                # ✅ Authentication
+│   └── tun/                 # 🆕 Phase 4C: TUN/TAP interface
+│
+├── mobile/                  # 🆕 Phase 4G: Mobile apps
 │   ├── ios/
 │   └── android/
 │
-└── docs/                    # 🆕 Extended documentation
-    ├── ARCHITECTURE.md      # This file
-    ├── ROADMAP.md
-    └── examples/
+└── ...existing (relay-server, configs, docs, examples)
 ```
 
 ### Service Exposure Architecture
@@ -693,7 +706,7 @@ Similar to iOS but with full VPNService API access:
 
 **Core**:
 - Go 1.25+
-- libp2p v0.38.2+ (networking)
+- libp2p v0.47.0 (networking)
 - Kademlia DHT (peer discovery)
 - Noise protocol (encryption)
 - QUIC transport (performance)
