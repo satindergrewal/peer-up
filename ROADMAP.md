@@ -314,6 +314,39 @@ resolvers := []NameResolver{
 
 ---
 
+## Distribution & Packaging
+
+**Status**: 📋 Planned (low effort, high impact)
+
+These items make peer-up easy to install and share with others.
+
+### Pre-built Binaries (GoReleaser + GitHub Releases)
+
+- [ ] Set up [GoReleaser](https://goreleaser.com/) config (`.goreleaser.yaml`)
+- [ ] GitHub Actions workflow: on tag push, build binaries for Linux/macOS/Windows (amd64 + arm64)
+- [ ] Publish to GitHub Releases with checksums
+- [ ] Users download a single binary — no Go toolchain needed
+
+**Result**: `curl -L https://github.com/.../releases/latest/download/peerup-linux-amd64 -o peerup`
+
+### Easy Peer Authorization
+
+- [ ] `peerup auth add <peer-id> --comment "friend"` — append to authorized_keys
+- [ ] `peerup auth list` — show authorized peers
+- [ ] `peerup auth remove <peer-id>` — revoke access
+- [ ] `peerup whoami` — show own peer ID (for sharing with friends)
+
+**Result**: No manual file editing to authorize a friend.
+
+### Package Managers
+
+- [ ] Homebrew tap for macOS: `brew install satindergrewal/tap/peerup`
+- [ ] APT repository for Debian/Ubuntu
+- [ ] AUR package for Arch Linux
+- [ ] Snap or Flatpak (optional)
+
+---
+
 ## Phase 5+: Ecosystem & Polish
 
 **Timeline**: Ongoing
