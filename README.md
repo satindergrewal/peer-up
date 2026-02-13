@@ -189,6 +189,8 @@ peerup ping home
 │   ├── peerup.sample.yaml
 │   ├── relay-server.sample.yaml
 │   └── authorized_keys.sample
+├── examples/                  # Example implementations
+│   └── basic-service/
 ├── docs/                      # Project documentation
 │   ├── ARCHITECTURE.md
 │   ├── FAQ.md
