@@ -1,43 +1,31 @@
 # peer-up: Decentralized P2P Network Infrastructure
 
-A libp2p-based federated peer-to-peer network platform that enables secure connections across CGNAT networks with SSH-style authentication, service exposure, and local-first naming.
+A libp2p-based peer-to-peer network platform that enables secure connections across CGNAT networks with SSH-style authentication, service exposure, and local-first naming.
 
 ## Vision
 
 **peer-up** is evolving from a simple NAT traversal tool into a comprehensive **decentralized P2P network infrastructure** that:
 
-- 🌐 **Connects your devices** across CGNAT/firewall barriers (Starlink, mobile networks)
-- 🔐 **Exposes local services** (SSH, HTTP, SMB, custom protocols) through P2P connections
-- 🏘️ **Federates networks** - Connect your network to friends' networks (like Mastodon for P2P)
-- 📱 **Works on mobile** - iOS/Android apps with VPN-like functionality
-- 🏷️ **Flexible naming** - Local names, network-scoped domains, optional blockchain anchoring
-- 📚 **Reusable library** - Import `pkg/p2pnet` in your own Go projects
+- Connects your devices across CGNAT/firewall barriers (Starlink, mobile networks)
+- Exposes local services (SSH, XRDP, HTTP, SMB, custom protocols) through P2P connections
+- Federates networks - Connect your network to friends' networks
+- Works on mobile - iOS/Android apps with VPN-like functionality
+- Flexible naming - Local names, network-scoped domains, optional blockchain anchoring
+- Reusable library - Import `pkg/p2pnet` in your own Go projects
 
-**Think:** Tailscale + Tor Hidden Services + your own federated network.
+## Current Status (Phase 4A Complete)
 
-## Current Status (Phase 1-3 Complete ✅)
-
-- ✅ **Configuration-Based** - YAML config files, no hardcoded values, no recompilation needed
-- ✅ **SSH-Style Authentication** - `authorized_keys` file for peer access control
-- ✅ **NAT Traversal** - Works through Starlink CGNAT using relay + hole-punching
-- ✅ **Persistent Identity** - Ed25519 keypairs saved to files
-- ✅ **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
-- ✅ **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P after relay connection
-- ✅ **Key Management Tool** - `keytool` CLI for managing keypairs and authorized_keys
-
-## Use Cases
-
-### Current (Phase 1-3)
-- ✅ Connect phone to home computer across CGNAT/firewall
-- ✅ Secure P2P messaging/protocols with authentication
-- ✅ Private relay server for your devices
-
-### Coming Soon (Phase 4+)
-- 🚀 Access home SSH/HTTP/SMB from anywhere (mobile/desktop)
-- 🚀 Federate your network with friends' networks
-- 🚀 Use custom protocols: `ssh user@laptop.grewal` or `http://desktop.alice:8080`
-- 🚀 Mount SMB shares using peer names: `//home.grewal/media`
-- 🚀 Build apps with `pkg/p2pnet` library for P2P networking
+- **Configuration-Based** - YAML config files, no hardcoded values
+- **SSH-Style Authentication** - `authorized_keys` file for peer access control
+- **NAT Traversal** - Works through Starlink CGNAT using relay + hole-punching
+- **Persistent Identity** - Ed25519 keypairs saved to files
+- **DHT Discovery** - Find peers using rendezvous on Kademlia DHT
+- **Direct Connection Upgrade** - DCUtR attempts hole-punching for direct P2P
+- **Key Management Tool** - `keytool` CLI for managing keypairs and authorized_keys
+- **Service Exposure** - Expose any TCP service (SSH, XRDP, HTTP, etc.) via P2P
+- **Reusable Library** - `pkg/p2pnet` package for building P2P applications
+- **Unified Client** - Single `peerup` binary with subcommands (proxy, ping)
+- **Name Resolution** - Map friendly names to peer IDs in config
 
 ## The Problem
 
@@ -56,34 +44,45 @@ Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, and blocks inbound IPv6 connect
 ```
 
 1. **Relay Server** (VPS) - Circuit relay with optional authentication via `authorized_keys`
-2. **Home Node** - Accepts only authorized peers via `authorized_keys`
-3. **Client Node** - Connects with persistent identity or ephemeral key
+2. **Home Node** - Exposes local services, accepts only authorized peers
+3. **Client (`peerup`)** - Connects to home node services through the relay
 
 ## Project Structure
 
 ```
-├── configs/                     # Sample configuration files
+├── cmd/
+│   ├── home-node/              # Home node binary
+│   │   └── main.go
+│   ├── peerup/                 # Client binary (proxy + ping subcommands)
+│   │   ├── main.go
+│   │   ├── cmd_proxy.go
+│   │   └── cmd_ping.go
+│   └── keytool/                # Key management CLI
+│       ├── main.go
+│       └── commands/
+├── pkg/p2pnet/                 # Reusable P2P networking library
+│   ├── network.go              # Core network setup, relay helpers, name resolution
+│   ├── service.go              # Service registry and management
+│   ├── proxy.go                # Bidirectional TCP↔Stream proxy with half-close
+│   ├── naming.go               # Local name resolution (name → peer ID)
+│   └── identity.go             # Ed25519 identity management
+├── internal/
+│   ├── config/                 # YAML configuration loading
+│   │   ├── config.go
+│   │   └── loader.go
+│   └── auth/                   # Authentication system
+│       ├── authorized_keys.go
+│       └── gater.go
+├── relay-server/               # VPS relay node (separate module)
+│   ├── main.go
+│   └── relay-server.service
+├── configs/                    # Sample configuration files
 │   ├── home-node.sample.yaml
 │   ├── client-node.sample.yaml
 │   ├── relay-server.sample.yaml
 │   └── authorized_keys.sample
-├── internal/                    # Shared packages
-│   ├── config/                  # YAML configuration loading
-│   │   ├── config.go
-│   │   └── loader.go
-│   └── auth/                    # Authentication system
-│       ├── authorized_keys.go   # Parser for authorized_keys file
-│       └── gater.go            # ConnectionGater implementation
-├── relay-server/               # VPS relay node
-│   ├── main.go
-│   ├── go.mod
-│   └── relay-server.service
-├── home-node/                  # Home computer node
-│   ├── main.go
-│   └── go.mod
-└── client-node/                # Phone/laptop client
-    ├── main.go
-    └── go.mod
+├── go.mod                      # Single root module
+└── ROADMAP.md
 ```
 
 ## Quick Start
@@ -91,62 +90,120 @@ Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, and blocks inbound IPv6 connect
 ### 1. Deploy Relay Server (VPS)
 
 ```bash
-# On your VPS
 cd relay-server
 
 # Create config from sample
 cp ../configs/relay-server.sample.yaml relay-server.yaml
+# Edit relay-server.yaml if needed (defaults are fine)
 
-# Edit if needed (defaults are fine)
 # Build and run
 go build -o relay-server
 ./relay-server
 ```
 
-**Copy the Relay Peer ID** from the output - you'll need it for the next steps.
+Copy the **Relay Peer ID** from the output - you'll need it for the next steps.
 
 ### 2. Set Up Home Node
 
+The home node runs on your home computer and exposes local services.
+
 ```bash
-# On your home computer
-cd home-node
+# Build from repo root (outputs binary to current directory)
+go build -o home-node ./cmd/home-node
+
+# Create a working directory for the home node
+mkdir -p ~/home-node && cd ~/home-node
 
 # Create config from sample
-cp ../configs/home-node.sample.yaml home-node.yaml
+cp /path/to/peer-up/configs/home-node.sample.yaml home-node.yaml
 
 # Edit home-node.yaml:
 # 1. Set relay address and peer ID from step 1
-# 2. Set rendezvous string (keep default for now)
-# 3. Enable/disable authentication
+# 2. Enable services you want to expose (ssh, xrdp, web, etc.)
 
-# Create authorized_keys file (if authentication enabled)
-cp ../configs/authorized_keys.sample authorized_keys
+# Create authorized_keys file
+cp /path/to/peer-up/configs/authorized_keys.sample authorized_keys
 # Add client peer IDs (one per line)
 
-# Build and run
-go build -o home-node
+# Run
 ./home-node
 ```
 
-**Copy the Home Node Peer ID** from the output.
+Copy the **Home Node Peer ID** from the output.
 
-### 3. Set Up Client Node
+### 3. Set Up Client (peerup)
+
+The `peerup` client runs on your phone/laptop and connects to home node services.
 
 ```bash
-# On your phone/laptop
-cd client-node
+# Build from repo root
+go build -o peerup ./cmd/peerup
+
+# Create a working directory for the client
+mkdir -p ~/client-node && cd ~/client-node
 
 # Create config from sample
-cp ../configs/client-node.sample.yaml client-node.yaml
+cp /path/to/peer-up/configs/client-node.sample.yaml client-node.yaml
 
 # Edit client-node.yaml:
 # 1. Set relay address and peer ID from step 1
-# 2. Match rendezvous string with home-node
-# 3. Set key_file for persistent identity (optional)
+# 2. Add name mappings (optional, for convenience)
+# 3. Set key_file for persistent identity (recommended)
 
-# Build and run
-go build -o client-node
-./client-node <HOME_PEER_ID>
+# Create authorized_keys file
+cp /path/to/peer-up/configs/authorized_keys.sample authorized_keys
+# Add home node peer ID
+```
+
+### 4. Use Services
+
+**Important:** Always run `peerup` from the directory containing `client-node.yaml`.
+
+```bash
+cd ~/client-node
+
+# SSH to home node
+../peerup proxy home ssh 2222
+# In another terminal: ssh -p 2222 user@localhost
+
+# Remote desktop (XRDP)
+../peerup proxy home xrdp 13389
+# In another terminal: xfreerdp /v:localhost:13389 /u:user
+
+# Any TCP service
+../peerup proxy home web 8080
+# In browser: http://localhost:8080
+
+# Ping home node (test connectivity)
+../peerup ping home
+```
+
+You can use either a name (like `home`) or the full peer ID:
+```bash
+../peerup proxy 12D3KooWLutPZ... ssh 2222
+```
+
+## Building
+
+All binaries are built from the repo root using the single Go module:
+
+```bash
+# Build home node
+go build -o home-node ./cmd/home-node
+
+# Build client (peerup)
+go build -o peerup ./cmd/peerup
+
+# Build keytool
+go build -o keytool ./cmd/keytool
+
+# Build relay server (separate module)
+cd relay-server && go build -o relay-server
+```
+
+**Cross-compile for Linux** (e.g., to deploy home-node on a Linux server):
+```bash
+GOOS=linux GOARCH=amd64 go build -o home-node ./cmd/home-node
 ```
 
 ## Configuration
@@ -155,7 +212,7 @@ go build -o client-node
 
 ```yaml
 identity:
-  key_file: "home_node.key"  # Persistent peer identity
+  key_file: "home_node.key"
 
 network:
   listen_addresses:
@@ -169,17 +226,63 @@ relay:
   reservation_interval: "2m"
 
 discovery:
-  rendezvous: "my-private-p2p-network"  # Custom rendezvous string
-  bootstrap_peers: []  # Empty = use libp2p defaults
+  rendezvous: "my-private-p2p-network"
 
 security:
   authorized_keys_file: "authorized_keys"
-  enable_connection_gating: true  # Enforce authentication
+  enable_connection_gating: true
 
 protocols:
   ping_pong:
     enabled: true
     id: "/pingpong/1.0.0"
+
+# Expose local services through P2P
+services:
+  ssh:
+    enabled: true
+    local_address: "localhost:22"
+  xrdp:
+    enabled: true
+    local_address: "localhost:3389"
+  web:
+    enabled: false
+    local_address: "localhost:80"
+  plex:
+    enabled: false
+    local_address: "localhost:32400"
+```
+
+### Client Node Config (`client-node.yaml`)
+
+```yaml
+identity:
+  key_file: "client_node.key"
+
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/0"
+    - "/ip4/0.0.0.0/udp/0/quic-v1"
+
+relay:
+  addresses:
+    - "/ip4/YOUR_VPS_IP/tcp/7777/p2p/YOUR_RELAY_PEER_ID"
+
+discovery:
+  rendezvous: "my-private-p2p-network"
+
+security:
+  authorized_keys_file: "authorized_keys"
+  enable_connection_gating: true
+
+protocols:
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"
+
+# Map friendly names to peer IDs
+names:
+  home: "YOUR_HOME_NODE_PEER_ID"
 ```
 
 ### Authorized Keys Format
@@ -187,14 +290,78 @@ protocols:
 ```bash
 # File: authorized_keys
 # Format: <peer_id> # optional comment
-
 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL  # my-laptop
 12D3KooWPjceQrSwdWXPyLLeABRXmuqt69Rg3sBYUXCUVwbj7QbA  # my-phone
 ```
 
+## peerup Commands
+
+### `peerup proxy` - Forward TCP to remote service
+
+```
+Usage: peerup proxy <target> <service> <local-port>
+
+Arguments:
+  target       Peer ID or name from config (e.g., "home")
+  service      Service name as defined in home node config (e.g., "ssh", "xrdp")
+  local-port   Local TCP port to listen on
+
+Examples:
+  peerup proxy home ssh 2222          # SSH via name
+  peerup proxy home xrdp 13389       # Remote desktop
+  peerup proxy 12D3KooW... ssh 2222  # SSH via peer ID
+```
+
+### `peerup ping` - Test connectivity
+
+```
+Usage: peerup ping <target>
+
+Arguments:
+  target    Peer ID or name from config
+
+Examples:
+  peerup ping home
+  peerup ping 12D3KooW...
+```
+
+## Library (`pkg/p2pnet`)
+
+The `pkg/p2pnet` package can be imported into your own Go projects:
+
+```go
+import "github.com/satindergrewal/peer-up/pkg/p2pnet"
+
+// Create a P2P network
+net, _ := p2pnet.New(&p2pnet.Config{
+    KeyFile:      "myapp.key",
+    EnableRelay:  true,
+    RelayAddrs:   []string{"/ip4/.../tcp/7777/p2p/..."},
+})
+
+// Expose a local service
+net.ExposeService("api", "localhost:8080")
+
+// Connect to a peer's service
+conn, _ := net.ConnectToService(peerID, "api")
+
+// Name resolution
+net.LoadNames(map[string]string{"home": "12D3KooW..."})
+peerID, _ := net.ResolveName("home")
+
+// Add relay addresses for a remote peer
+net.AddRelayAddressesForPeer(relayAddrs, peerID)
+
+// Create a TCP listener that proxies to a remote service
+listener, _ := p2pnet.NewTCPListener("localhost:8080", func() (p2pnet.ServiceConn, error) {
+    return net.ConnectToService(peerID, "api")
+})
+listener.Serve()
+```
+
 ## Authentication System
 
-The authentication system uses two layers of defense:
+Two layers of defense:
 
 1. **ConnectionGater** (network level) - Blocks unauthorized peers during connection handshake
 2. **Protocol handler validation** (application level) - Double-checks authorization before processing requests
@@ -203,25 +370,15 @@ The authentication system uses two layers of defense:
 
 1. **Home node** loads `authorized_keys` at startup
 2. When a peer attempts to connect, `InterceptSecured()` checks the peer ID
-3. If not authorized → connection **DENIED** at network level
-4. If authorized → connection allowed, protocol handler performs secondary check
+3. If not authorized, connection is **DENIED** at network level
+4. If authorized, connection is allowed and protocol handler performs secondary check
 
-### Testing Authentication
+### Fail-Safe Defaults
 
-**Test 1: Unauthorized peer (should be denied)**
-```bash
-# Run client-node without adding its peer ID to authorized_keys
-# Watch home-node logs:
-# "DENIED inbound connection from unauthorized peer: 12D3KooW..."
-```
-
-**Test 2: Authorized peer (should work)**
-```bash
-# Add client peer ID to home-node/authorized_keys
-# Restart home-node (to reload authorized_keys)
-# Run client-node again
-# Should connect successfully and receive pong
-```
+- If `enable_connection_gating: true` but no `authorized_keys` file: **refuses to start**
+- If `authorized_keys` is empty: **warns loudly** but allows (for initial setup)
+- Home node: **allows all outbound** connections (for DHT, relay, etc.)
+- Home node: **blocks all unauthorized inbound** connections
 
 ## Security Notes
 
@@ -230,27 +387,12 @@ The authentication system uses two layers of defense:
 ```bash
 chmod 600 *.key              # Private keys: owner read/write only
 chmod 600 authorized_keys    # SSH-style: owner read/write only
-chmod 644 *.yaml            # Configs: readable by all
+chmod 644 *.yaml             # Configs: readable by all
 ```
-
-### Fail-Safe Defaults
-
-- If `enable_connection_gating: true` but no `authorized_keys` file → **refuses to start**
-- If `authorized_keys` is empty → **warns loudly** but allows (for initial setup)
-- Home node: **Allows all outbound** connections (for DHT, relay, etc.)
-- Home node: **Blocks all unauthorized inbound** connections
 
 ### Relay Server Security
 
-**Authentication available:** Relay server supports `authorized_keys` to restrict who can make reservations.
-
-**Configuration:**
-- Set `enable_connection_gating: true` in `relay-server.yaml`
-- Add authorized peer IDs to `relay_authorized_keys` file
-- Only authorized peers can connect and make circuit relay reservations
-- Prevents bandwidth theft and unauthorized relay usage
-
-**Recommended:** Enable authentication in production to protect your VPS bandwidth limits.
+The relay server supports `authorized_keys` to restrict who can make reservations. Enable authentication in production to protect your VPS bandwidth.
 
 ## Architecture
 
@@ -267,81 +409,24 @@ chmod 644 *.yaml            # Configs: readable by all
 ### Hole-Punching (DCUtR)
 
 After relay connection is established, libp2p attempts **Direct Connection Upgrade through Relay**:
-- If successful → subsequent data flows directly (no relay bandwidth)
-- If failed (symmetric NAT) → continues using relay
+- If successful: subsequent data flows directly (no relay bandwidth)
+- If failed (symmetric NAT): continues using relay
 
 ### Peer Discovery (Kademlia DHT)
 
 Home node **advertises** on DHT using rendezvous string.
 Client node **searches** DHT for the rendezvous string to find home node's peer ID and addresses.
 
-## Relay Server Details
+### Bidirectional Proxy
 
-The relay is minimal and private:
-
-```go
-h, err := libp2p.New(
-    libp2p.Identity(priv),
-    libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/7777"),
-)
-relayv2.New(h, relayv2.WithInfiniteLimits())
-```
-
-**Key design decisions:**
-- **No DHT participation** - Avoids IPFS swarm traffic
-- **Non-standard port (7777)** - Further avoids IPFS discovery
-- **`WithInfiniteLimits()`** - Safe for private relay with known peers
-- **Manual `relayv2.New()`** - More reliable than `EnableRelayService()` option
-
-### Running as a Service (systemd)
-
-```bash
-# On VPS
-sudo cp relay-server.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable relay-server
-sudo systemctl start relay-server
-sudo systemctl status relay-server
-```
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `Failed to load config` | Create config files from samples in `configs/` |
-| `Invalid configuration` | Check YAML syntax, required fields |
-| `Connection gating enabled but no authorized_keys_file` | Specify path in config |
-| `DENIED inbound connection` | Add peer ID to `authorized_keys` and restart home-node |
-| `authorized_keys file is empty` | Add authorized peer IDs (one per line) |
-| Home node shows no `/p2p-circuit` addresses | Check `force_private_reachability: true` and relay address |
-| `protocols not supported: [/libp2p/circuit/relay/0.2.0/hop]` | Relay service not running - check relay-server |
-| Relay swarmed by peers | Don't enable DHT on relay, use non-standard port |
-| `failed to sufficiently increase receive buffer size` | Warning only: `sudo sysctl -w net.core.rmem_max=7500000` |
-
-## Key Lessons Learned
-
-1. **`ForceReachabilityPrivate()`** is essential on home node behind CGNAT - without it, libp2p detects IPv6 and assumes it's reachable, skipping relay reservations
-
-2. **ConnectionGater checks happen after crypto handshake** - peer ID is verified before authorization check (`InterceptSecured`)
-
-3. **Configuration hot-reload not implemented** - Restart nodes after editing `authorized_keys` (file watcher planned for Phase 3)
-
-4. **Relay should use `relayv2.New(host)` manually** - `libp2p.EnableRelayService()` as host option didn't reliably register hop protocol in testing
-
-5. **Port 4001 = IPFS swarm traffic** - Use non-standard ports and skip DHT on relay to avoid hundreds of IPFS peer connections
-
-## Bandwidth Considerations
-
-- **Relay-based connection**: Limited by relay VPS bandwidth (~1TB/month on $5 Linode)
-- **After DCUtR upgrade**: Direct P2P connection, no relay bandwidth used
-- **Starlink symmetric NAT**: DCUtR often fails, relay remains in use
-- **Workaround**: Place Starlink router in bypass mode + custom router with IPv6 firewall configuration
+The TCP proxy uses the half-close pattern (inspired by Go stdlib's `httputil.ReverseProxy`):
+- When one direction finishes sending, it signals `CloseWrite` instead of closing the connection
+- The other direction can continue sending until it also finishes
+- This prevents premature connection closure and works correctly with protocols like SSH and XRDP
 
 ## keytool - Key Management Utility
 
-The `keytool` CLI utility helps manage Ed25519 keypairs and authorized_keys files.
-
-### Building keytool
+### Building
 
 ```bash
 cd cmd/keytool
@@ -350,176 +435,115 @@ go build -o keytool
 
 ### Commands
 
-#### 1. Generate Keypair
-
 ```bash
 # Generate new Ed25519 keypair
-keytool generate <output-path> [--force]
-
-# Example
 keytool generate my-node.key
 
-# Output:
-# ✓ Generated new Ed25519 keypair
-#   Saved to: my-node.key
-#   Peer ID:  12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL
-#   Short:    12D3KooWLCavCP1...
-```
-
-#### 2. Extract Peer ID
-
-```bash
 # Extract peer ID from key file
-keytool peerid <key-file>
-
-# Example
 keytool peerid home_node.key
 
-# Output:
-# Key file: home_node.key
-# Peer ID:  12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL
-# Short:    12D3KooWLCavCP1...
-```
-
-#### 3. Validate authorized_keys
-
-```bash
-# Validate authorized_keys file format
-keytool validate <authorized_keys>
-
-# Example
+# Validate authorized_keys file
 keytool validate authorized_keys
 
-# Output (success):
-# ✓ Validation passed
-#   Valid peer IDs: 3
-
-# Output (error):
-# ✗ Validation failed with 1 error(s):
-#   Line 5: invalid peer ID format - ...
-```
-
-#### 4. Authorize Peer
-
-```bash
 # Add peer to authorized_keys
-keytool authorize <peer-id> [--file authorized_keys] [--comment "description"]
+keytool authorize 12D3KooW... --comment "laptop" --file authorized_keys
 
-# Example
-keytool authorize 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL \
-    --comment "laptop" --file authorized_keys
-
-# Output:
-# ✓ Authorized peer: 12D3KooWLCavCP1...
-#   Comment: laptop
-#   File: authorized_keys
-```
-
-#### 5. Revoke Peer
-
-```bash
 # Remove peer from authorized_keys
-keytool revoke <peer-id> [--file authorized_keys]
-
-# Example
-keytool revoke 12D3KooWLCavCP1Pma9NGJQnGDQhgwSjgQgupWprZJH4w1P3HCVL \
-    --file authorized_keys
-
-# Output:
-# ✓ Revoked peer: 12D3KooWLCavCP1...
-#   File: authorized_keys
+keytool revoke 12D3KooW... --file authorized_keys
 ```
 
 ### Common Workflows
 
-**Initial Setup:**
 ```bash
-# 1. Generate key for home-node
+# Initial setup
 keytool generate home-node.key
-
-# 2. Generate key for client-node
 keytool generate client-node.key
-
-# 3. Extract peer IDs
 keytool peerid client-node.key
-
-# 4. Add client to home-node's authorized_keys
-keytool authorize <CLIENT_PEER_ID> --comment "my-phone" --file home-node-authorized_keys
+keytool authorize <CLIENT_PEER_ID> --comment "my-phone" --file authorized_keys
 ```
 
-**Managing Access:**
+## Running as a Service (systemd)
+
+### Relay Server
+
 ```bash
-# Add multiple peers
-keytool authorize 12D3KooW... --comment "laptop"
-keytool authorize 12D3KooW... --comment "phone"
-
-# Validate before deploying
-keytool validate authorized_keys
-
-# Remove access
-keytool revoke 12D3KooW... --file authorized_keys
+sudo cp relay-server/relay-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable relay-server
+sudo systemctl start relay-server
 ```
+
+### Home Node
+
+Create `/etc/systemd/system/home-node.service`:
+```ini
+[Unit]
+Description=peer-up Home Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/path/to/home-node
+WorkingDirectory=/path/to/home-node-config-dir
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `Failed to load config` | Ensure you're running from the directory containing the YAML config |
+| `Cannot resolve target` | Add name mapping to `names:` section in `client-node.yaml` |
+| `DENIED inbound connection` | Add peer ID to `authorized_keys` and restart home-node |
+| Home node shows no `/p2p-circuit` addresses | Check `force_private_reachability: true` and relay address |
+| `protocols not supported: [/libp2p/circuit/relay/0.2.0/hop]` | Relay service not running |
+| XRDP window manager crashes | Ensure no conflicting physical desktop session for the same user |
+| `failed to sufficiently increase receive buffer size` | Warning only: `sudo sysctl -w net.core.rmem_max=7500000` |
+
+## Bandwidth Considerations
+
+- **Relay-based connection**: Limited by relay VPS bandwidth (~1TB/month on $5 Linode)
+- **After DCUtR upgrade**: Direct P2P connection, no relay bandwidth used
+- **Starlink symmetric NAT**: DCUtR often fails, relay remains in use
 
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for detailed multi-phase implementation plan.
 
-### Phase 1-3: Foundation ✅ COMPLETE
-- [x] ✅ Configuration system (YAML-based)
-- [x] ✅ SSH-style authentication (ConnectionGater + authorized_keys)
-- [x] ✅ Relay-based NAT traversal
-- [x] ✅ `keytool` CLI utility for key management
+### Phase 1-3: Foundation - COMPLETE
+- Configuration system (YAML-based)
+- SSH-style authentication (ConnectionGater + authorized_keys)
+- Relay-based NAT traversal
+- `keytool` CLI utility for key management
 
-### Phase 4: Service Exposure & Core Library 🚧 IN PROGRESS
+### Phase 4A: Core Library & Service Registry - COMPLETE
+- `pkg/p2pnet` reusable library
+- Service registry and bidirectional TCP proxy
+- `cmd/` layout with single Go module
+- `peerup` unified client with subcommands
+- Local name resolution
+- Tested: SSH, XRDP, generic TCP across LAN and 5G
 
-**4A: Core Library** (Current)
-- [ ] Refactor to `pkg/p2pnet` reusable package
-- [ ] Service registry and exposure
-- [ ] Bidirectional TCP↔Stream proxy
-- [ ] Local name resolution (simple YAML-based)
+### Phase 4B: Desktop Gateway - Next
+- Multi-mode daemon: SOCKS / DNS / TUN
+- Virtual network overlay
+- Local DNS server (`.p2p` TLD)
 
-**4B: Desktop Gateway**
-- [ ] Multi-mode daemon: SOCKS / DNS / TUN
-- [ ] Virtual network overlay (10.64.0.0/16)
-- [ ] Local DNS server (`.p2p` TLD)
-- [ ] `/etc/hosts` integration
-
-**4C: Federation**
-- [ ] Relay-to-relay peering
-- [ ] Network-scoped naming (`host.network`)
-- [ ] Cross-network routing
-- [ ] Trust/authorization between networks
-
-**4D: Mobile Apps**
-- [ ] iOS: NEPacketTunnelProvider (VPN mode)
-- [ ] Android: Full VPN service
-- [ ] Per-app SDK for native integration
-
-**4E: Advanced Naming** (Optional)
-- [ ] Plugin architecture for name resolvers
-- [ ] Blockchain integration (Ethereum/Bitcoin OP_RETURN)
-- [ ] ENS (.eth) support
-- [ ] IPFS/Arweave archiving
-
-### Phase 5+: Ecosystem
-- [ ] Protocol marketplace (community-contributed services)
-- [ ] Web dashboard for network management
-- [ ] Performance monitoring and analytics
-- [ ] Mobile SDKs for third-party apps
-- [ ] Documentation and tutorials
+### Phase 4C-4E: Federation, Mobile, Advanced Naming
+See [ROADMAP.md](ROADMAP.md).
 
 ## Dependencies
 
-**Core:**
-- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.38.2 (home/client/relay nodes)
-- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.47.0 (keytool)
+- [go-libp2p](https://github.com/libp2p/go-libp2p) v0.47.0
 - [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.28.1
-- [go-multiaddr](https://github.com/multiformats/go-multiaddr) v0.14.0+
+- [go-multiaddr](https://github.com/multiformats/go-multiaddr)
 - [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) v3.0.1
-
-**keytool specific:**
-- [urfave/cli](https://github.com/urfave/cli) v1.22.17
-- [fatih/color](https://github.com/fatih/color) v1.18.0
+- [urfave/cli](https://github.com/urfave/cli) v1.22.17 (keytool)
+- [fatih/color](https://github.com/fatih/color) v1.18.0 (keytool)
 
 ## License
 
@@ -530,12 +554,14 @@ MIT
 This is a personal project, but issues and PRs are welcome!
 
 **Testing checklist for PRs:**
-- [ ] All three nodes build successfully
+- [ ] `go build ./cmd/home-node` succeeds
+- [ ] `go build ./cmd/peerup` succeeds
+- [ ] `go build ./cmd/keytool` succeeds
 - [ ] Config files load without errors
 - [ ] Unauthorized peer is denied
 - [ ] Authorized peer connects successfully
-- [ ] PING-PONG protocol works
+- [ ] Service proxy works (SSH, XRDP, or other TCP)
 
 ---
 
-**Built with libp2p** - Peer-to-peer networking that just works. 🚀
+**Built with libp2p** - Peer-to-peer networking that just works.

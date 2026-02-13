@@ -9,9 +9,9 @@
 *.dylib
 
 # Built executables
-client-node/client-node
+home-node
+peerup
 cmd/keytool/keytool
-home-node/home-node
 relay-server/relay-server
 
 # Test binary, built with `go test -c`
