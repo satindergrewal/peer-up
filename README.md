@@ -189,8 +189,12 @@ peerup ping home
 │   ├── peerup.sample.yaml
 │   ├── relay-server.sample.yaml
 │   └── authorized_keys.sample
+├── docs/                      # Project documentation
+│   ├── ARCHITECTURE.md
+│   ├── FAQ.md
+│   ├── ROADMAP.md
+│   └── TESTING.md
 ├── go.mod                      # Single root module
-└── ROADMAP.md
 ```
 
 ## Building
@@ -493,7 +497,7 @@ WantedBy=multi-user.target
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for detailed multi-phase implementation plan.
+See [ROADMAP.md](docs/ROADMAP.md) for detailed multi-phase implementation plan.
 
 ## Dependencies
 
