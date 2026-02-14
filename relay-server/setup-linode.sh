@@ -573,8 +573,6 @@ run_check() {
                 echo "  Scan this QR code during 'peerup init':"
                 qrencode -t ANSIUTF8 "$MADDR_V4" 2>/dev/null || qrencode -t UTF8 "$MADDR_V4" 2>/dev/null
             fi
-        else
-            echo "  [INFO] Install qrencode for QR code display: sudo apt install qrencode"
         fi
 
         echo
@@ -711,7 +709,7 @@ echo
 
 # --- 1. Install Go if not present ---
 if ! command -v go &> /dev/null; then
-    echo "[1/7] Installing Go..."
+    echo "[1/8] Installing Go..."
     GO_VERSION="1.23.6"
     wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
     run_sudo rm -rf /usr/local/go
@@ -723,12 +721,22 @@ if ! command -v go &> /dev/null; then
     fi
     echo "  Go $(go version | awk '{print $3}') installed"
 else
-    echo "[1/7] Go already installed: $(go version | awk '{print $3}')"
+    echo "[1/8] Go already installed: $(go version | awk '{print $3}')"
 fi
 echo
 
-# --- 2. Tune network buffers for QUIC ---
-echo "[2/7] Tuning network buffers for QUIC..."
+# --- 2. Install qrencode for QR code display in --check ---
+if ! command -v qrencode &>/dev/null; then
+    echo "[2/8] Installing qrencode..."
+    run_sudo apt-get install -y -qq qrencode > /dev/null 2>&1
+    echo "  qrencode installed (used by --check for QR codes)"
+else
+    echo "[2/8] qrencode already installed"
+fi
+echo
+
+# --- 3. Tune network buffers for QUIC ---
+echo "[3/8] Tuning network buffers for QUIC..."
 if ! grep -q 'net.core.rmem_max=7500000' /etc/sysctl.conf 2>/dev/null; then
     echo "net.core.rmem_max=7500000" | run_sudo tee -a /etc/sysctl.conf > /dev/null
     echo "net.core.wmem_max=7500000" | run_sudo tee -a /etc/sysctl.conf > /dev/null
@@ -739,7 +747,7 @@ echo "  Buffer sizes set to 7.5MB"
 echo
 
 # --- 3. Configure journald log rotation ---
-echo "[3/7] Configuring journald log rotation..."
+echo "[4/8] Configuring journald log rotation..."
 JOURNALD_CONF="/etc/systemd/journald.conf"
 NEEDS_RESTART=false
 
@@ -768,7 +776,7 @@ fi
 echo
 
 # --- 4. Firewall ---
-echo "[4/7] Configuring firewall..."
+echo "[5/8] Configuring firewall..."
 if command -v ufw &> /dev/null; then
     run_sudo ufw allow 7777/tcp comment 'peer-up relay TCP' > /dev/null 2>&1 || true
     run_sudo ufw allow 7777/udp comment 'peer-up relay QUIC' > /dev/null 2>&1 || true
@@ -779,14 +787,14 @@ fi
 echo
 
 # --- 5. Build ---
-echo "[5/7] Building relay-server..."
+echo "[6/8] Building relay-server..."
 cd "$RELAY_DIR"
 go build -o relay-server .
 echo "  Built: $RELAY_DIR/relay-server"
 echo
 
 # --- 6. File permissions ---
-echo "[6/7] Setting file permissions..."
+echo "[7/8] Setting file permissions..."
 chmod 700 "$RELAY_DIR/relay-server"
 if [ -f "$RELAY_DIR/relay_node.key" ]; then
     chmod 600 "$RELAY_DIR/relay_node.key"
@@ -806,7 +814,7 @@ echo "  Binary: 700, keys: 600, config: 644"
 echo
 
 # --- 7. Install systemd service ---
-echo "[7/7] Installing systemd service..."
+echo "[8/8] Installing systemd service..."
 
 # Generate service file with correct paths for this machine
 cat > /tmp/relay-server.service <<SERVICEEOF
