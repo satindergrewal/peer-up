@@ -10,11 +10,18 @@ identity:
 
 network:
   # Addresses to listen on
-  # Use port 7777 (non-standard to avoid IPFS swarms)
+  # Default: port 7777 TCP (non-standard to avoid IPFS swarms)
   # Make sure this port is open in your firewall (ufw allow 7777/tcp)
   listen_addresses:
     - "/ip4/0.0.0.0/tcp/7777"
     - "/ip6/::/tcp/7777"
+
+    # Anti-censorship: WebSocket on port 443
+    # Looks like regular HTTPS/WebSocket traffic to ISP deep packet inspection.
+    # ISPs almost never block port 443 — it would break all web browsing.
+    # Requires: setup-linode.sh adds CAP_NET_BIND_SERVICE to systemd service.
+    # - "/ip4/0.0.0.0/tcp/443/ws"
+    # - "/ip6/::/tcp/443/ws"
 
 security:
   # Path to authorized_keys file

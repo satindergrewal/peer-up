@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/satindergrewal/peer-up/internal/auth"
@@ -61,6 +62,7 @@ func New(cfg *Config) (*Network, error) {
 		libp2p.Identity(priv),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.Transport(ws.New),
 	}
 
 	// Add listen addresses if configured
