@@ -512,7 +512,7 @@ run_check() {
     fi
 
     # Check WebSocket port if configured
-    WS_PORT=$(grep -oP 'tcp/\K[0-9]+(?=/ws)' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | head -1)
+    WS_PORT=$(grep -v '^\s*#' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | grep -oP 'tcp/\K[0-9]+(?=/ws)' | head -1)
     if [ -n "$WS_PORT" ]; then
         WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
         if [ "$WS_PORT_OWNER" = "relay-server" ]; then
@@ -834,7 +834,7 @@ if command -v ufw &> /dev/null; then
     # Open WebSocket port if configured (anti-censorship)
     if [ -f "$RELAY_DIR/relay-server.yaml" ]; then
         # Detect which WebSocket port is configured (443, 8443, or other)
-        WS_PORT=$(grep -oP 'tcp/\K[0-9]+(?=/ws)' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | head -1)
+        WS_PORT=$(grep -v '^\s*#' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | grep -oP 'tcp/\K[0-9]+(?=/ws)' | head -1)
         if [ -n "$WS_PORT" ]; then
             # Check if the port is already in use by another service
             WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
