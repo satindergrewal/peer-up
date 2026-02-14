@@ -24,6 +24,8 @@ func main() {
 		runWhoami(os.Args[2:])
 	case "auth":
 		runAuth(os.Args[2:])
+	case "relay":
+		runRelay(os.Args[2:])
 	case "invite":
 		runInvite(os.Args[2:])
 	case "join":
@@ -48,6 +50,10 @@ func printUsage() {
 	fmt.Println("  auth add <peer-id> [--comment \"...\"]    Authorize a peer")
 	fmt.Println("  auth list                               List authorized peers")
 	fmt.Println("  auth remove <peer-id>                   Revoke a peer's access")
+	fmt.Println()
+	fmt.Println("  relay add <multiaddr>                   Add a relay server address")
+	fmt.Println("  relay list                              List configured relay addresses")
+	fmt.Println("  relay remove <multiaddr>                Remove a relay server address")
 	fmt.Println()
 	fmt.Println("  invite                                  Generate an invite code for pairing")
 	fmt.Println("  join <code>                             Accept an invite and auto-configure")
