@@ -206,16 +206,23 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 **Deliverables**:
 
 **Security (Critical)**:
-- [ ] Relay resource limits — replace `WithInfiniteLimits()` with explicit caps (max reservations, circuits, bandwidth per peer)
+- [ ] Relay resource limits — replace `WithInfiniteLimits()` with libp2p Resource Manager scopes: per-peer connection limits, per-peer bandwidth caps, memory and file descriptor budgets. DAG-based constraints at system, protocol, and peer levels.
 - [ ] Auth hot-reload — file watcher or SIGHUP to reload `authorized_keys` without restart (revoke access immediately)
 - [ ] Per-service access control — allow granting specific peers access to specific services only
-- [ ] Rate limiting on incoming connections and streams (per-peer throttling)
+- [ ] Rate limiting on incoming connections and streams — leverage go-libp2p's built-in per-IP rate limiting (1 connection per 5s default, 16-burst). Add per-peer stream throttling.
+- [ ] QUIC source address verification — validate peer source IPs aren't spoofed, prevents relay from being used as DDoS reflector (built into quic-go v0.54.0+)
 - [ ] OS-level rate limiting — iptables/nftables rules in `setup.sh` (SYN flood protection, `--connlimit-above` per source IP)
 - [x] Config file permissions — write with 0600 (not 0644) *(done in Phase 4B)*
 - [ ] Key file permission check on load — warn/refuse if not 0600
 - [ ] Service name validation — reject special characters that could create ambiguous protocol IDs
 - [x] Relay address validation in `peerup init` — parse multiaddr before writing config *(done in Phase 4B)*
-- [ ] Upgrade relay-server libp2p to v0.47.0 (currently 9 minor versions behind main module — potential unpatched CVEs)
+
+**libp2p Upgrade (Critical)**:
+- [ ] Upgrade main module go-libp2p to latest — gains AutoNAT v2, smart dialing, QUIC improvements, Resource Manager, per-IP rate limiting, source address verification
+- [ ] Upgrade relay-server go-libp2p to match main module (currently v0.38.2, many versions behind — potential unpatched CVEs)
+- [ ] Enable AutoNAT v2 — per-address reachability testing (know which specific addresses are publicly reachable; distinguish IPv4 vs IPv6 NAT state). Includes nonce-based dial verification and amplification attack prevention.
+- [ ] Enable smart dialing — address ranking, QUIC prioritization, sequential dial with fast failover (reduces connection churn vs old parallel-dial-all approach)
+- [ ] QUIC as preferred transport — 1 fewer RTT on connection setup (3 RTTs vs 4 for TCP), native multiplexing, better for hole punching
 
 **Self-Healing & Resilience** (inspired by Juniper JunOS, Cisco IOS, Kubernetes, systemd, MikroTik):
 - [ ] **Config validation command** — `peerup validate` / `relay-server validate` — parse config, check key file exists, verify relay address reachable, dry-run before applying. Catches errors before they cause downtime.
@@ -232,9 +239,10 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 
 **Reliability**:
 - [ ] Reconnection with exponential backoff — recover from relay drops automatically (1s → 2s → 4s → ... → 60s cap)
-- [ ] Connection warmup — pre-establish connection to target peer at `peerup proxy` startup
-- [ ] Stream pooling — reuse streams instead of creating fresh ones per TCP connection
-- [ ] DHT bootstrap in proxy command — enable DCUtR hole-punching (currently proxy always relays)
+- [ ] Connection warmup — pre-establish connection to target peer at `peerup proxy` startup (eliminates 5-15s per-session setup latency)
+- [ ] Stream pooling — reuse streams instead of creating fresh ones per TCP connection (eliminates per-connection protocol negotiation)
+- [ ] Persistent relay reservation — keep reservation alive with periodic refresh instead of re-reserving per connection. Reduces connection setup toward 1-3s (matching Iroh's performance).
+- [ ] DHT bootstrap in proxy command — enable DCUtR hole-punching (currently proxy always relays). With hole punch success (~70%), many connections bypass relay entirely.
 - [ ] Graceful shutdown — replace `os.Exit(0)` with proper cleanup, drain active connections
 - [ ] Goroutine lifecycle — use `select` + `context.Done()` instead of bare `time.Sleep` loops
 - [ ] TCP dial timeout — `net.DialTimeout(5s)` for local service connections
@@ -253,6 +261,12 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - **Cisco IOS `configure replace`**: Atomic config replacement with automatic rollback on failure.
 - **MikroTik Safe Mode**: Track all changes since entering safe mode; revert everything if connection drops.
 - **Kubernetes liveness/readiness probes**: Health endpoints that trigger automatic restart on failure.
+
+**libp2p Specification References**:
+- **Circuit Relay v2**: [Specification](https://github.com/libp2p/specs/blob/master/relay/circuit-v2.md) — reservation-based relay with configurable resource limits
+- **DCUtR**: [Specification](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md) — Direct Connection Upgrade through Relay (hole punching coordination)
+- **AutoNAT v2**: [Specification](https://github.com/libp2p/specs/blob/master/autonat/autonat-v2.md) — per-address reachability testing with amplification prevention
+- **Hole Punching Measurement**: [Study](https://arxiv.org/html/2510.27500v1) — 4.4M traversal attempts, 85K+ networks, 167 countries, ~70% success rate
 - **systemd WatchdogSec**: Process heartbeat — if the process stops responding, systemd restarts it. Used by PostgreSQL, nginx, and other production services.
 - **Caddy atomic reload**: Start new config alongside old; if new config fails, keep old. Zero-downtime config changes.
 
@@ -774,6 +788,11 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 - `peerup status` shows connection state, peer status, and latency
 - `peerup daemon` runs in background; scripts can query status and list services via Unix socket
 - `peerup join --non-interactive` works in Docker containers and CI/CD pipelines without TTY
+- go-libp2p upgraded to latest in both main module and relay-server (no version gap)
+- AutoNAT v2 enabled — node correctly identifies per-address reachability (IPv4 vs IPv6)
+- Resource Manager replaces `WithInfiniteLimits()` — per-peer connection/bandwidth caps enforced
+- Connection setup latency reduced from 5-15s toward 1-3s (persistent reservation + warmup)
+- QUIC transport used by default (3 RTTs vs 4 for TCP)
 
 **Phase 4D Success**:
 - Third-party code can implement custom `Resolver`, `Authorizer`, and stream middleware

@@ -256,6 +256,113 @@ For Starlink CGNAT with a self-hosted relay, Circuit Relay v2 is **functionally 
 
 ---
 
+## What is Circuit Relay v2?
+
+Circuit Relay v2 is libp2p's protocol for routing traffic through an intermediary relay node when peers can't connect directly (NAT, CGNAT, firewalls). It replaced v1 in 2021.
+
+### How it works
+
+```
+1. Peer A → Relay: "RESERVE" (request a slot)
+2. Relay → A: "OK" + expiration + voucher (cryptographic proof)
+3. Peer B → Relay: "CONNECT to A"
+4. Relay → A: "B wants to connect"
+5. A → Relay: "OK"
+6. Relay bridges the two streams — data flows bidirectionally
+```
+
+The protocol splits into two sub-protocols:
+- **Hop** (`/libp2p/circuit/relay/0.2.0/hop`) — client ↔ relay (reserve, connect)
+- **Stop** (`/libp2p/circuit/relay/0.2.0/stop`) — relay ↔ target peer (deliver connection)
+
+### Why v1 was replaced
+
+v1 had no resource reservation — relays got overloaded with no way to limit usage. v2 introduced explicit reservations with configurable limits (duration, data caps, bandwidth), making it cheap to run "an army of relays for extreme horizontal scaling." Relays can reject connections with status codes like `RESOURCE_LIMIT_EXCEEDED` or `RESERVATION_REFUSED`.
+
+### Known limitations
+
+| Limitation | Detail |
+|-----------|--------|
+| **Setup latency** | 5-15 seconds (reservation + handshake + DHT lookup) |
+| **No persistent connections** | Connections have hard TTL; each dial requires new reservation |
+| **Reservation overhead** | Every peer must explicitly reserve before receiving relayed connections |
+| **Throughput asymmetry** | Limited by relay's aggregate bandwidth, not peer bandwidth |
+| **Default public limits** | 128 KB data cap, 2-minute duration (configurable on self-hosted) |
+
+### Is there a Circuit Relay v3?
+
+**No.** No v3 exists or is planned. libp2p's strategy is to reduce *dependence* on relays through better hole punching ([DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md) improvements, [AutoNAT v2](https://github.com/libp2p/specs/blob/master/autonat/autonat-v2.md)), not to replace the relay protocol itself.
+
+The improvements come from upgrading everything *around* the relay — see the next FAQ entry.
+
+**Source**: [Circuit Relay v2 Specification](https://github.com/libp2p/specs/blob/master/relay/circuit-v2.md)
+
+---
+
+## What libp2p improvements should peer-up adopt?
+
+peer-up currently uses go-libp2p v0.47.0 (relay-server uses v0.38.2). Several improvements have shipped since then that would meaningfully improve performance, security, and reliability.
+
+### AutoNAT v2 (go-libp2p v0.41.1+)
+
+The old AutoNAT tested "is my node reachable?" as a binary yes/no. v2 tests **individual addresses**:
+
+| | **AutoNAT v1** | **AutoNAT v2** |
+|---|---|---|
+| **Tests** | Whole node reachability | Each address independently |
+| **Verification** | Trust the dialer's claim | Nonce-based proof (dial-back) |
+| **Amplification risk** | Yes (could be spoofed) | No (client must transfer 30-100KB first) |
+| **IPv4/IPv6** | Can't distinguish | Tests each separately |
+
+A peer-up node could know "IPv4 is behind NAT but IPv6 is public" and make smarter connection decisions.
+
+**Source**: [AutoNAT v2 Specification](https://github.com/libp2p/specs/blob/master/autonat/autonat-v2.md)
+
+### Smart Dialing (go-libp2p v0.28.0+)
+
+Old behavior: dial all peer addresses in parallel, abort on first success. Wasteful and creates network churn.
+
+New behavior: ranks addresses intelligently, prioritizes QUIC over TCP, dials sequentially with fast failover. When a peer has both relay and direct addresses, smart dialing tries the direct path first.
+
+### Resource Manager
+
+DAG-based resource constraints at system, protocol, and per-peer levels. This is the proper replacement for peer-up's `WithInfiniteLimits()`:
+
+- Per-peer connection and stream limits
+- Per-peer bandwidth caps
+- Memory and file descriptor budgets
+- Rate limiting (1 connection per 5s per IP, 16-burst default)
+- Prevents one peer from exhausting all relay resources
+
+### QUIC Source Address Verification
+
+Validates that the peer's source IP isn't spoofed. Prevents relay from being used as a DDoS reflector. Built into go-libp2p's QUIC transport since quic-go v0.54.0.
+
+### DCUtR Hole Punching Improvements
+
+No v2 of DCUtR, but continuous refinement:
+- RTT measurement retries on each attempt (prevents one bad measurement from ruining all retries)
+- TCP hole punching now achieves "statistically indistinguishable success rates" from UDP
+- Measured success: **70% ± 7.1%** across 4.4M attempts from 85K+ networks in 167 countries
+
+**Source**: [Large Scale NAT Traversal Measurement Study](https://arxiv.org/html/2510.27500v1), [libp2p Hole Punching blog](https://blog.ipfs.tech/2022-01-20-libp2p-hole-punching/)
+
+### What peer-up plans to do (Phase 4C)
+
+| Optimization | Impact | Effort |
+|-------------|--------|--------|
+| **Upgrade go-libp2p** to latest | Gains all of the above automatically | Low |
+| **Replace `WithInfiniteLimits()`** with Resource Manager scopes | Eliminates relay resource exhaustion vulnerability | Medium |
+| **Enable DCUtR** in proxy command | Bypasses relay entirely when hole punch succeeds | Low |
+| **Connection warmup** | Pre-establish relay connection at startup (eliminates 5-15s per-session setup) | Low |
+| **Stream pooling** | Reuse streams instead of fresh ones per TCP connection | Medium |
+| **Persistent relay reservation** | Keep reservation alive with periodic refresh instead of re-reserving per connection | Medium |
+| **QUIC as default transport** | 1 fewer RTT on connection setup (3 vs 4 for TCP) | Low |
+
+Together, these changes would bring connection setup from 5-15 seconds closer to 1-3 seconds, matching Iroh's performance while keeping the self-sovereign architecture.
+
+---
+
 ## Is Bitcoin's P2P faster than libp2p?
 
 Bitcoin's P2P protocol has **less overhead per message**, but it can't do what peer-up needs.
