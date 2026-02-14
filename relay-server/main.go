@@ -283,10 +283,30 @@ func extractTCPPort(listenAddresses []string) string {
 	return "7777"
 }
 
+func printUsage() {
+	fmt.Println("Usage: relay-server [command]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  (no command)                        Start the relay server")
+	fmt.Println("  info                                Show peer ID, multiaddrs, QR code")
+	fmt.Println("  authorize <peer-id> [comment]       Allow a peer to use this relay")
+	fmt.Println("  deauthorize <peer-id>               Remove a peer's access")
+	fmt.Println("  list-peers                          List authorized peers")
+	fmt.Println("  help                                Show this help message")
+	fmt.Println()
+	fmt.Println("Setup (via bash script):")
+	fmt.Println("  bash setup.sh                       Full setup (build, systemd, firewall)")
+	fmt.Println("  bash setup.sh --check               Health check only")
+	fmt.Println("  bash setup.sh --uninstall           Remove service and config")
+}
+
 func main() {
 	// Handle subcommands before starting the relay
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "help", "--help", "-h":
+			printUsage()
+			return
 		case "authorize":
 			runAuthorize(os.Args[2:])
 			return
@@ -299,6 +319,10 @@ func main() {
 		case "info":
 			runInfo()
 			return
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+			printUsage()
+			os.Exit(1)
 		}
 	}
 

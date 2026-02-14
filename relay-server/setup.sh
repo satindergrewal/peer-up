@@ -644,6 +644,27 @@ run_check() {
 }
 
 # ============================================================
+# If --help flag, show usage and exit
+# ============================================================
+if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "help" ]; then
+    echo "Usage: bash setup.sh [option]"
+    echo
+    echo "Options:"
+    echo "  (no option)    Full setup (build, systemd, firewall, permissions)"
+    echo "  --check        Health check only (no changes made)"
+    echo "  --uninstall    Remove service, firewall rules, and system tuning"
+    echo "  --help         Show this help message"
+    echo
+    echo "Relay server commands (via the Go binary):"
+    echo "  ./relay-server                                Start the relay"
+    echo "  ./relay-server info                           Show peer ID, multiaddrs, QR code"
+    echo "  ./relay-server authorize <peer-id> [comment]  Allow a peer"
+    echo "  ./relay-server deauthorize <peer-id>          Remove a peer"
+    echo "  ./relay-server list-peers                     List authorized peers"
+    exit 0
+fi
+
+# ============================================================
 # If --check flag, run health check only and exit
 # ============================================================
 if [ "$1" = "--check" ]; then
