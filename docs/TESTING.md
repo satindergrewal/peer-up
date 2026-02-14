@@ -81,10 +81,16 @@ go build -o relay-server
 
 The wizard will:
 1. Create `~/.config/peerup/` directory
-2. Ask for your relay server address
+2. Ask for your relay server address (accepts flexible formats):
+   - Full multiaddr: `/ip4/1.2.3.4/tcp/7777/p2p/12D3KooW...`
+   - IP and port: `1.2.3.4:7777` (then prompts for peer ID)
+   - Bare IP: `1.2.3.4` (uses default port 7777, then prompts for peer ID)
+   - IPv6: `[2600:3c00::1]:7777` or `[2600:3c00::1]`
 3. Generate an Ed25519 identity key
-4. Display your **Peer ID** (share this with peers who need to authorize you)
+4. Display your **Peer ID** as text + QR code (share with peers)
 5. Write `config.yaml`, `identity.key`, and `authorized_keys`
+
+**Tip**: Check your peer ID anytime with `./peerup whoami`
 
 ### Configure services
 
@@ -130,19 +136,48 @@ Loaded configuration from ~/.config/peerup/config.yaml
 
 ### Authorize peers
 
-Add the home server's Peer ID to your `authorized_keys`:
+**Option A: Invite/Join flow (recommended — handles both sides automatically)**
 
+On the home server:
+```bash
+./peerup invite --name home
+# Displays an invite code + QR code. Share the code with the client.
+```
+
+On the client:
+```bash
+./peerup join <invite-code> --name laptop
+# Automatically: connects to inviter, exchanges peer IDs,
+# adds each other to authorized_keys, adds name mapping.
+```
+
+**Option B: CLI commands**
+
+On the client, add the home server's peer ID:
+```bash
+./peerup auth add 12D3KooWHOME...ABC --comment "home-server"
+```
+
+Do the same on the home server — add the client's peer ID:
+```bash
+./peerup auth add 12D3KooWCLIENT...XYZ --comment "laptop"
+```
+
+Verify with:
+```bash
+./peerup auth list
+```
+
+**Option C: Manual file edit**
 ```bash
 # Edit ~/.config/peerup/authorized_keys
-# Add the home server's peer ID:
+# Add the peer ID (one per line):
 12D3KooWHOME...ABC  # home-server
 ```
 
-Do the same on the home server — add the client's Peer ID to its `authorized_keys`.
-
 ### Add friendly name
 
-Edit `~/.config/peerup/config.yaml` on the client:
+If you used the invite/join flow, names are added automatically. Otherwise, edit `~/.config/peerup/config.yaml` on the client:
 
 ```yaml
 # Map friendly names to peer IDs:
@@ -219,6 +254,33 @@ services:
 ./peerup proxy home web 8080
 # Then: curl http://localhost:8080
 ```
+
+---
+
+## Managing Relay Addresses
+
+After initial setup, you can add or remove relay servers:
+
+```bash
+# Add a relay (flexible formats)
+./peerup relay add 1.2.3.4 --peer-id 12D3KooW...
+./peerup relay add 1.2.3.4:7777 --peer-id 12D3KooW...
+./peerup relay add /ip4/1.2.3.4/tcp/7777/p2p/12D3KooW...
+
+# List configured relays
+./peerup relay list
+
+# Remove a relay
+./peerup relay remove /ip4/1.2.3.4/tcp/7777/p2p/12D3KooW...
+```
+
+### Relay health check
+
+On the VPS, verify the relay is healthy:
+```bash
+sudo ./setup-linode.sh --check
+```
+This shows systemd status, peer ID, public IPs, full multiaddrs, and a QR code for easy sharing.
 
 ---
 

@@ -109,38 +109,71 @@ This document outlines the multi-phase evolution of peer-up from a simple NAT tr
 
 ---
 
-### Phase 4B: Frictionless Onboarding (Next)
+### Phase 4B: Frictionless Onboarding ✅ COMPLETE
 
 **Timeline**: 1-2 weeks
-**Status**: 📋 Planned
+**Status**: ✅ Completed
 
 **Goal**: Eliminate manual key exchange and config editing. Get two machines connected in under 60 seconds.
 
 **Rationale**: The current flow (generate key → share peer ID → edit authorized_keys → write config) has 4 friction points before anything works. This is the single biggest adoption barrier.
 
 **Deliverables**:
-- [ ] `peerup invite` — generate short-lived invite code (encodes relay address + peer ID)
-- [ ] `peerup join <code>` — accept invite, exchange keys, auto-configure, connect
-- [ ] QR code output for `peerup invite` (scannable by mobile app later)
-- [ ] `peerup whoami` — show own peer ID and friendly name for sharing
-- [ ] `peerup auth add <peer-id> --comment "friend"` — append to authorized_keys
-- [ ] `peerup auth list` — show authorized peers
-- [ ] `peerup auth remove <peer-id>` — revoke access
+- [x] `peerup invite` — generate short-lived invite code (encodes relay address + peer ID)
+- [x] `peerup join <code>` — accept invite, exchange keys, auto-configure, connect
+- [x] QR code output for `peerup invite` (scannable by mobile app later)
+- [x] `peerup whoami` — show own peer ID and friendly name for sharing
+- [x] `peerup auth add <peer-id> --comment "friend"` — append to authorized_keys
+- [x] `peerup auth list` — show authorized peers
+- [x] `peerup auth remove <peer-id>` — revoke access
+- [x] `peerup relay add/list/remove` — manage relay addresses without editing YAML
+- [x] Flexible relay address input — accept `IP:PORT` or bare `IP` (default port 7777) in addition to full multiaddr
+- [x] QR code display in `peerup init` (peer ID) and `peerup invite` (invite code)
+- [x] Relay connection info + QR code in `setup-linode.sh --check`
+
+**Security hardening** (done as part of 4B):
+- [x] Sanitize authorized_keys comments (prevent newline injection)
+- [x] Sanitize YAML names from remote peers (prevent config injection)
+- [x] Limit invite/join stream reads to 512 bytes (prevent OOM DoS)
+- [x] Validate multiaddr before writing to config YAML
+- [x] Use `os.CreateTemp` for atomic writes (prevent symlink attacks)
+- [x] Reject hostnames in relay input — only IP addresses accepted (no DNS resolution / SSRF)
+- [x] Config files written with 0600 permissions
+
+**Key Files**:
+- `cmd/peerup/cmd_auth.go` — auth add/list/remove subcommands
+- `cmd/peerup/cmd_whoami.go` — show peer ID
+- `cmd/peerup/cmd_invite.go` — generate invite code + QR + P2P handshake
+- `cmd/peerup/cmd_join.go` — decode invite, connect, auto-configure
+- `cmd/peerup/cmd_relay.go` — relay add/list/remove subcommands
+- `cmd/peerup/relay_input.go` — flexible relay address parsing (IP, IP:PORT, multiaddr)
+- `internal/auth/manage.go` — shared AddPeer/RemovePeer/ListPeers with input sanitization
+- `internal/invite/code.go` — binary invite code encoding/decoding (base32)
 
 **User Experience**:
 ```bash
 # Machine A (home server)
-$ peerup invite
-Invite code (expires in 10 minutes): ABCX-7KMN-P2P3
-Share this with your other device.
+$ peerup invite --name home
+=== Invite Code (expires in 10m0s) ===
+AEQB-XJKZ-M4NP-...
+[QR code displayed]
+Waiting for peer to join...
 
 # Machine B (laptop)
-$ peerup join ABCX-7KMN-P2P3
-✓ Connected to relay
-✓ Found peer "home" (12D3KooW...Gukpf4)
-✓ Keys exchanged and authorized
-✓ Config written to ~/.config/peerup/config.yaml
-Ready! Try: peerup proxy home ssh 2222
+$ peerup join AEQB-XJKZ-M4NP-... --name laptop
+=== Joined successfully! ===
+Peer "home" authorized and added to names.
+Try: peerup ping home
+
+# Or use CLI auth commands directly:
+$ peerup auth add 12D3KooW... --comment "friend"
+$ peerup auth list
+$ peerup auth remove 12D3KooW...
+
+# Manage relay servers:
+$ peerup relay add 192.53.169.150:7777 --peer-id 12D3KooW...
+$ peerup relay list
+$ peerup relay remove /ip4/192.53.169.150/tcp/7777/p2p/12D3KooW...
 ```
 
 **Security**:
@@ -148,6 +181,8 @@ Ready! Try: peerup proxy home ssh 2222
 - One-time use — code is invalidated after successful join
 - Relay mediates the handshake but never sees private keys
 - Both sides must be online simultaneously during join
+- Stream reads capped at 512 bytes to prevent OOM attacks
+- All user-facing inputs sanitized before writing to files
 
 ---
 
@@ -167,10 +202,10 @@ Ready! Try: peerup proxy home ssh 2222
 - [ ] Auth hot-reload — file watcher or SIGHUP to reload `authorized_keys` without restart (revoke access immediately)
 - [ ] Per-service access control — allow granting specific peers access to specific services only
 - [ ] Rate limiting on incoming connections and streams (per-peer throttling)
-- [ ] Config file permissions — write with 0600 (not 0644)
+- [x] Config file permissions — write with 0600 (not 0644) *(done in Phase 4B)*
 - [ ] Key file permission check on load — warn/refuse if not 0600
 - [ ] Service name validation — reject special characters that could create ambiguous protocol IDs
-- [ ] Relay address validation in `peerup init` — parse multiaddr before writing config
+- [x] Relay address validation in `peerup init` — parse multiaddr before writing config *(done in Phase 4B)*
 
 **Reliability**:
 - [ ] Reconnection with exponential backoff — recover from relay drops automatically
@@ -665,8 +700,8 @@ peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for 
 | Phase 2: Authentication | ✅ 2 weeks | Complete |
 | Phase 3: keytool CLI | ✅ 1 week | Complete |
 | Phase 4A: Core Library + UX | ✅ 2-3 weeks | Complete |
-| **Phase 4B: Frictionless Onboarding** | 📋 1-2 weeks | **Next** |
-| Phase 4C: Core Hardening & Security | 📋 2-3 weeks | Planned |
+| Phase 4B: Frictionless Onboarding | ✅ 1-2 weeks | Complete |
+| **Phase 4C: Core Hardening & Security** | 📋 2-3 weeks | **Next** |
 | Phase 4D: Plugin Architecture & SDK | 📋 1-2 weeks | Planned |
 | Phase 4E: File Sharing | 📋 1 week | Planned |
 | Phase 4F: Distribution & Install | 📋 1 week | Planned |
@@ -761,5 +796,5 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 ---
 
 **Last Updated**: 2026-02-14
-**Current Phase**: 4A Complete, 4B Next
-**Next Milestone**: Frictionless Onboarding (invite/join flow)
+**Current Phase**: 4B Complete, 4C Next
+**Next Milestone**: Core Hardening & Security (relay limits, tests, reconnection)

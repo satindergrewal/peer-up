@@ -4,8 +4,8 @@ This document describes the technical architecture of peer-up, from current impl
 
 ## Table of Contents
 
-- [Current Architecture (Phase 4A Complete)](#current-architecture-phase-4a-complete)
-- [Target Architecture (Phase 4B+)](#target-architecture-phase-4b)
+- [Current Architecture (Phase 4B Complete)](#current-architecture-phase-4b-complete)
+- [Target Architecture (Phase 4C+)](#target-architecture-phase-4c)
 - [Core Concepts](#core-concepts)
 - [Security Model](#security-model)
 - [Naming System](#naming-system)
@@ -14,20 +14,27 @@ This document describes the technical architecture of peer-up, from current impl
 
 ---
 
-## Current Architecture (Phase 4A Complete)
+## Current Architecture (Phase 4B Complete)
 
 ### Component Overview
 
 ```
 peer-up/
 ├── cmd/
-│   ├── peerup/              # Single binary (init, serve, proxy, ping)
-│   │   ├── main.go
-│   │   ├── cmd_init.go
-│   │   ├── cmd_serve.go
-│   │   ├── cmd_proxy.go
-│   │   └── cmd_ping.go
-│   └── keytool/             # Key management CLI
+│   ├── peerup/              # Single binary with subcommands
+│   │   ├── main.go          # Command dispatch (init, serve, proxy, ping, whoami,
+│   │   │                    #   auth, relay, invite, join)
+│   │   ├── cmd_init.go      # Interactive setup wizard
+│   │   ├── cmd_serve.go     # Server mode (expose services)
+│   │   ├── cmd_proxy.go     # TCP proxy client
+│   │   ├── cmd_ping.go      # Connectivity test
+│   │   ├── cmd_whoami.go    # Show own peer ID
+│   │   ├── cmd_auth.go      # Auth add/list/remove subcommands
+│   │   ├── cmd_relay.go     # Relay add/list/remove subcommands
+│   │   ├── cmd_invite.go    # Generate invite code + QR + P2P handshake
+│   │   ├── cmd_join.go      # Decode invite, connect, auto-configure
+│   │   └── relay_input.go   # Flexible relay address parsing (IP, IP:PORT, multiaddr)
+│   └── keytool/             # Key management CLI (legacy, shares internal/auth)
 │       ├── main.go
 │       └── commands/
 │
@@ -42,13 +49,16 @@ peer-up/
 │   ├── config/              # YAML configuration loading
 │   │   ├── config.go
 │   │   └── loader.go
-│   └── auth/                # SSH-style authentication
-│       ├── authorized_keys.go
-│       └── gater.go         # ConnectionGater implementation
+│   ├── auth/                # SSH-style authentication
+│   │   ├── authorized_keys.go  # Parser + ConnectionGater loader
+│   │   ├── gater.go            # ConnectionGater implementation
+│   │   └── manage.go           # AddPeer/RemovePeer/ListPeers (shared by CLI + keytool)
+│   └── invite/              # Invite code encoding/decoding
+│       └── code.go          # Binary → base32 with dash grouping
 │
 ├── relay-server/            # Circuit relay v2 (VPS, separate module)
 │   ├── main.go
-│   ├── setup-linode.sh
+│   ├── setup-linode.sh      # Deploy/verify/uninstall (incl. QR code + connection info)
 │   └── relay-server.service
 │
 ├── configs/                 # Sample configuration files
@@ -140,9 +150,32 @@ Client Attempts Connection to Home Node
    └──────────────────────────────────┘
 ```
 
+### Peer Authorization Methods
+
+There are three ways to authorize peers:
+
+**1. CLI — `peerup auth`**
+```bash
+peerup auth add <peer-id> --comment "label"
+peerup auth list
+peerup auth remove <peer-id>
+```
+
+**2. Invite/Join flow — zero-touch mutual authorization**
+```
+Machine A: peerup invite --name home     # Generates invite code + QR
+Machine B: peerup join <code> --name laptop  # Decodes, connects, auto-authorizes both sides
+```
+The invite protocol uses a one-time token (16 random bytes, HMAC-verified) over a P2P stream. Both peers add each other to `authorized_keys` and `names` config automatically.
+
+**3. Manual — edit `authorized_keys` file directly**
+```bash
+echo "12D3KooW... # home-server" >> ~/.config/peerup/authorized_keys
+```
+
 ---
 
-## Target Architecture (Phase 4B+)
+## Target Architecture (Phase 4C+)
 
 ### Planned Additions
 
@@ -151,7 +184,8 @@ Building on the current structure, future phases will add:
 ```
 peer-up/
 ├── cmd/
-│   ├── peerup/              # ✅ Single binary (init, serve, proxy, ping)
+│   ├── peerup/              # ✅ Single binary (init, serve, proxy, ping, whoami,
+│   │                        #   auth, relay, invite, join)
 │   ├── keytool/             # ✅ Key management CLI
 │   └── gateway/             # 🆕 Phase 4C: Multi-mode daemon (SOCKS, DNS, TUN)
 │
@@ -659,6 +693,11 @@ Similar to iOS but with full VPNService API access:
 - ✅ Man-in-the-middle (libp2p Noise encryption)
 - ✅ Replay attacks (Noise protocol nonces)
 - ✅ Relay bandwidth theft (relay authentication)
+- ✅ Newline injection in authorized_keys (sanitized comments)
+- ✅ YAML injection via peer names (allowlisted characters)
+- ✅ OOM via unbounded stream reads (512-byte buffer limits)
+- ✅ Symlink attacks on temp files (os.CreateTemp with random suffix)
+- ✅ Multiaddr injection in config (validated before writing)
 
 **Threats NOT Addressed** (out of scope):
 - ❌ Relay compromise (relay can see metadata, not content)
@@ -718,5 +757,5 @@ Similar to iOS but with full VPNService API access:
 
 ---
 
-**Last Updated**: 2026-02-13
-**Architecture Version**: 2.0 (Phase 4)
+**Last Updated**: 2026-02-14
+**Architecture Version**: 2.1 (Phase 4B Complete)
