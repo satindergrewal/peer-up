@@ -2,7 +2,7 @@ package auth
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/control"
@@ -16,17 +16,12 @@ import (
 type AuthorizedPeerGater struct {
 	authorizedPeers map[peer.ID]bool
 	mu              sync.RWMutex
-	logger          *log.Logger
 }
 
 // NewAuthorizedPeerGater creates a new connection gater with the given authorized peers
-func NewAuthorizedPeerGater(authorizedPeers map[peer.ID]bool, logger *log.Logger) *AuthorizedPeerGater {
-	if logger == nil {
-		logger = log.New(log.Writer(), "[AUTH] ", log.LstdFlags)
-	}
+func NewAuthorizedPeerGater(authorizedPeers map[peer.ID]bool) *AuthorizedPeerGater {
 	return &AuthorizedPeerGater{
 		authorizedPeers: authorizedPeers,
-		logger:          logger,
 	}
 }
 
@@ -59,11 +54,10 @@ func (g *AuthorizedPeerGater) InterceptSecured(dir network.Direction, p peer.ID,
 	if dir == network.DirInbound {
 		authorized := g.authorizedPeers[p]
 		if !authorized {
-			g.logger.Printf("DENIED inbound connection from unauthorized peer: %s (from %s)",
-				p.String()[:16]+"...", addr.RemoteMultiaddr())
+			slog.Warn("inbound connection denied", "peer", p.String()[:16]+"...", "remote_addr", addr.RemoteMultiaddr())
 			return false
 		}
-		g.logger.Printf("ALLOWED inbound connection from authorized peer: %s", p.String()[:16]+"...")
+		slog.Info("inbound connection allowed", "peer", p.String()[:16]+"...")
 	}
 
 	// Always allow outbound connections
@@ -81,7 +75,7 @@ func (g *AuthorizedPeerGater) UpdateAuthorizedPeers(authorizedPeers map[peer.ID]
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.authorizedPeers = authorizedPeers
-	g.logger.Printf("Updated authorized peers list (%d peers)", len(authorizedPeers))
+	slog.Info("updated authorized peers list", "count", len(authorizedPeers))
 }
 
 // GetAuthorizedPeersCount returns the number of authorized peers

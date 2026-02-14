@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"log"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -39,7 +38,7 @@ func genPeerID(t testing.TB) peer.ID {
 
 func TestNewAuthorizedPeerGater(t *testing.T) {
 	peers := map[peer.ID]bool{genPeerID(t): true}
-	g := NewAuthorizedPeerGater(peers, nil)
+	g := NewAuthorizedPeerGater(peers)
 
 	if g == nil {
 		t.Fatal("gater should not be nil")
@@ -53,7 +52,7 @@ func TestIsAuthorized(t *testing.T) {
 	allowed := genPeerID(t)
 	denied := genPeerID(t)
 
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true})
 
 	if !g.IsAuthorized(allowed) {
 		t.Error("allowed peer should be authorized")
@@ -64,7 +63,7 @@ func TestIsAuthorized(t *testing.T) {
 }
 
 func TestInterceptPeerDialAlwaysAllows(t *testing.T) {
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	unknown := genPeerID(t)
 
 	if !g.InterceptPeerDial(unknown) {
@@ -76,7 +75,7 @@ func TestInterceptSecuredInbound(t *testing.T) {
 	allowed := genPeerID(t)
 	denied := genPeerID(t)
 
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true}, log.Default())
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true})
 
 	cm := testConnMultiaddrs()
 
@@ -89,7 +88,7 @@ func TestInterceptSecuredInbound(t *testing.T) {
 }
 
 func TestInterceptSecuredOutbound(t *testing.T) {
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	unknown := genPeerID(t)
 
 	if !g.InterceptSecured(network.DirOutbound, unknown, testConnMultiaddrs()) {
@@ -98,7 +97,7 @@ func TestInterceptSecuredOutbound(t *testing.T) {
 }
 
 func TestUpdateAuthorizedPeers(t *testing.T) {
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	if g.GetAuthorizedPeersCount() != 0 {
 		t.Fatal("should start empty")
 	}
@@ -116,7 +115,7 @@ func TestUpdateAuthorizedPeers(t *testing.T) {
 }
 
 func TestInterceptUpgraded(t *testing.T) {
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	ok, reason := g.InterceptUpgraded(nil)
 	if !ok {
 		t.Error("InterceptUpgraded should always allow")

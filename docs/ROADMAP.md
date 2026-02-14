@@ -239,7 +239,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] **`peerup status` command** — show connection state: relay connected/disconnected, peer online status, connection type (relay/direct), latency, uptime. Replaces guessing with observability.
 
 **Auto-Upgrade Groundwork** (full implementation in Phase 4E):
-- [ ] **Build version embedding** — compile with `-ldflags "-X main.version=..."` so every binary knows its version. `peerup --version` and `relay-server --version` print build version, commit hash, and build date.
+- [x] **Build version embedding** — compile with `-ldflags "-X main.version=..."` so every binary knows its version. `peerup version` / `peerup --version` and `relay-server version` / `relay-server --version` print build version, commit hash, build date, and Go version. Version printed in relay-server startup banner. `setup.sh` injects version from git at build time.
 - [ ] **Version in libp2p Identify** — set `UserAgent` to `peerup/<version>` in libp2p host config. Peers learn each other's versions automatically on connect (no new protocol needed).
 - [ ] **Protocol versioning policy** — document compatibility guarantees: wire protocols (`/peerup/proxy/1.0.0`) are backwards-compatible within major version. Breaking changes increment major version. Old versions supported for 1 release cycle.
 
@@ -281,11 +281,24 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] Unit tests for auth package — gater (inbound/outbound/update), authorized_keys (load/parse/comments), manage (add/remove/list/duplicate/sanitize)
 - [x] Integration tests — in-process libp2p hosts verify real stream connectivity, half-close semantics, P2P-to-TCP proxy, and `DialWithRetry` behavior (6 tests in `pkg/p2pnet/integration_test.go`)
 
+**Batch A — Reliability** (completed):
+- [x] `DialWithRetry()` — exponential backoff retry (1s → 2s → 4s) for proxy dial
+- [x] TCP dial timeout — 10s for local service, 30s context for P2P stream
+- [x] DHT bootstrap in proxy command — Kademlia DHT (client mode) for direct peer discovery
+- [x] `[DIRECT]`/`[RELAYED]` connection path indicators in logs (checks `RemoteMultiaddr()` for `/p2p-circuit`)
+- [x] DCUtR hole-punch event tracer — logs hole punch STARTED/SUCCEEDED/FAILED and direct dial events
+
+**Batch B — Code Quality** (completed):
+- [x] Deduplicated bidirectional proxy — `BidirectionalProxy()` + `HalfCloseConn` interface (was 4 copies, now 1)
+- [x] Sentinel errors — 8 sentinel errors across 4 packages, all using `%w` wrapping for `errors.Is()`
+- [x] Build version embedding — `peerup version`, `relay-server version`, ldflags injection in setup.sh
+- [x] Structured logging with `log/slog` — library code migrated (~20 call sites), CLI output unchanged
+
 **Code Quality**:
 - [ ] Expand test coverage — naming, proxy, invite edge cases, relay input parsing
-- [ ] Structured logging — migrate to `log/slog` with levels and structured fields
-- [ ] Sentinel errors — define `ErrServiceNotFound`, `ErrPeerNotAuthorized`, etc.
-- [ ] Deduplicate proxy pattern — extract single `bidirectionalProxy()` function (currently copy-pasted 4x)
+- [x] Structured logging — migrated library code (`pkg/p2pnet/`, `internal/auth/`) to `log/slog` with structured key-value fields and log levels (Info/Warn/Error). CLI commands remain `fmt.Println` for user output.
+- [x] Sentinel errors — defined `ErrServiceAlreadyRegistered`, `ErrNameNotFound`, `ErrPeerAlreadyAuthorized`, `ErrPeerNotFound`, `ErrInvalidPeerID`, `ErrConfigNotFound`, `ErrConfigVersionTooNew`, `ErrInvalidServiceName` across 4 error files. All wrapped with `fmt.Errorf("%w: ...")` for `errors.Is()` support.
+- [x] Deduplicate proxy pattern — extracted `BidirectionalProxy()` with `HalfCloseConn` interface and `tcpHalfCloser` adapter (was copy-pasted 4x, now single ~30-line function)
 - [ ] Consolidate config loaders — unify `LoadHomeNodeConfig`/`LoadClientNodeConfig`
 - [ ] Health/status endpoint — expose connection state, relay status, active streams
 
@@ -923,6 +936,6 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 ---
 
 **Last Updated**: 2026-02-15
-**Current Phase**: 4C In Progress (module consolidation complete; pre-refactoring foundation: CI, tests, config versioning complete)
+**Current Phase**: 4C In Progress (Batch A: Reliability complete; Batch B: Code Quality complete)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Phase 4C Batch A (Reliability) — reconnection with backoff, TCP dial timeout, DHT in proxy, integration tests
+**Next Milestone**: Phase 4C Batch C (Self-Healing) — config validation, archive, rollback, commit-confirmed, systemd watchdog

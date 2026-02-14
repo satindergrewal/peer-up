@@ -35,7 +35,7 @@ func sanitizeComment(s string) string {
 func AddPeer(authKeysPath, peerIDStr, comment string) error {
 	peerID, err := peer.Decode(peerIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid peer ID: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidPeerID, err)
 	}
 
 	// Check for duplicates if file exists
@@ -45,7 +45,7 @@ func AddPeer(authKeysPath, peerIDStr, comment string) error {
 			return fmt.Errorf("failed to read existing file: %w", err)
 		}
 		if existing[peerID] {
-			return fmt.Errorf("peer already authorized: %s", peerID.String()[:16]+"...")
+			return fmt.Errorf("%w: %s", ErrPeerAlreadyAuthorized, peerID.String()[:16]+"...")
 		}
 	}
 
@@ -77,7 +77,7 @@ func AddPeer(authKeysPath, peerIDStr, comment string) error {
 func RemovePeer(authKeysPath, peerIDStr string) error {
 	targetID, err := peer.Decode(peerIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid peer ID: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidPeerID, err)
 	}
 
 	file, err := os.Open(authKeysPath)
@@ -129,7 +129,7 @@ func RemovePeer(authKeysPath, peerIDStr string) error {
 	}
 
 	if !found {
-		return fmt.Errorf("peer not found: %s", targetID.String()[:16]+"...")
+		return fmt.Errorf("%w: %s", ErrPeerNotFound, targetID.String()[:16]+"...")
 	}
 
 	// Atomic write via temp file + rename.
