@@ -2,6 +2,9 @@
 # This server runs on a VPS with a public IP
 # It relays connections between home and client nodes
 
+# Config schema version (do not change manually)
+version: 1
+
 identity:
   # Path to the key file for persistent peer identity
   # This file will be created automatically if it doesn't exist
