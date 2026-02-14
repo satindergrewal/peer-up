@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 
 	"github.com/satindergrewal/peer-up/internal/auth"
@@ -117,6 +120,169 @@ func runListPeers() {
 	fmt.Printf("\nTotal: %d peer(s)\n", len(peers))
 }
 
+func runInfo() {
+	cfg, err := config.LoadRelayServerConfig("relay-server.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Read identity key (don't auto-create — info is read-only)
+	data, err := os.ReadFile(cfg.Identity.KeyFile)
+	if err != nil {
+		log.Fatalf("Cannot read identity key %s: %v\n  Run the relay server once to generate a key.", cfg.Identity.KeyFile, err)
+	}
+	priv, err := crypto.UnmarshalPrivateKey(data)
+	if err != nil {
+		log.Fatalf("Invalid identity key: %v", err)
+	}
+	peerID, err := peer.IDFromPrivateKey(priv)
+	if err != nil {
+		log.Fatalf("Failed to derive peer ID: %v", err)
+	}
+
+	fmt.Printf("Peer ID: %s\n", peerID)
+
+	// Connection gating status
+	if cfg.Security.EnableConnectionGating {
+		fmt.Println("Connection gating: enabled")
+	} else {
+		fmt.Println("Connection gating: DISABLED")
+	}
+
+	// Authorized peers count
+	if cfg.Security.AuthorizedKeysFile != "" {
+		peers, err := auth.ListPeers(cfg.Security.AuthorizedKeysFile)
+		if err == nil {
+			fmt.Printf("Authorized peers: %d\n", len(peers))
+		}
+	}
+	fmt.Println()
+
+	// Detect public IPs and construct multiaddrs for all configured transports
+	publicIPs := detectPublicIPs()
+	multiaddrs := buildPublicMultiaddrs(cfg.Network.ListenAddresses, publicIPs, peerID)
+
+	if len(multiaddrs) > 0 {
+		fmt.Println("Multiaddrs:")
+		for _, maddr := range multiaddrs {
+			fmt.Printf("  %s\n", maddr)
+		}
+
+		// Find primary TCP multiaddr (IPv4 preferred) for QR code and quick setup
+		primaryAddr := ""
+		primaryPort := ""
+		for _, maddr := range multiaddrs {
+			if strings.Contains(maddr, "/ip4/") && strings.Contains(maddr, "/tcp/") && !strings.Contains(maddr, "/ws") {
+				primaryAddr = maddr
+				primaryPort = extractTCPPort([]string{maddr})
+				break
+			}
+		}
+		if primaryAddr == "" && len(multiaddrs) > 0 {
+			primaryAddr = multiaddrs[0]
+			primaryPort = extractTCPPort([]string{multiaddrs[0]})
+		}
+
+		// QR code (use qrencode if available)
+		if primaryAddr != "" {
+			if qrPath, err := exec.LookPath("qrencode"); err == nil && qrPath != "" {
+				fmt.Println()
+				fmt.Println("Scan this QR code during 'peerup init':")
+				cmd := exec.Command("qrencode", "-t", "ANSIUTF8", primaryAddr)
+				cmd.Stdout = os.Stdout
+				_ = cmd.Run()
+			}
+		}
+
+		fmt.Println()
+		fmt.Println("Quick setup:")
+		for _, ip := range publicIPs {
+			if !strings.Contains(ip, ":") && primaryPort != "" {
+				fmt.Printf("  peerup init  →  enter: %s:%s\n", ip, primaryPort)
+			}
+		}
+		fmt.Printf("  Peer ID: %s\n", peerID)
+	} else {
+		fmt.Println("Multiaddrs: could not detect public IPs")
+	}
+}
+
+// buildPublicMultiaddrs constructs public multiaddrs from listen addresses by
+// replacing bind addresses (0.0.0.0, ::) with detected public IPs.
+// Handles all transport types: TCP, QUIC, WebSocket, WebTransport.
+func buildPublicMultiaddrs(listenAddrs []string, publicIPs []string, peerID peer.ID) []string {
+	var result []string
+	for _, listen := range listenAddrs {
+		for _, ip := range publicIPs {
+			isIPv6 := strings.Contains(ip, ":")
+			proto := "ip4"
+			if isIPv6 {
+				proto = "ip6"
+			}
+			// Only match listen addresses with the same IP version
+			if strings.HasPrefix(listen, "/ip4/") && isIPv6 {
+				continue
+			}
+			if strings.HasPrefix(listen, "/ip6/") && !isIPv6 {
+				continue
+			}
+			// Replace the bind address with the public IP
+			maddr := listen
+			maddr = strings.Replace(maddr, "/ip4/0.0.0.0", "/"+proto+"/"+ip, 1)
+			maddr = strings.Replace(maddr, "/ip6/::", "/"+proto+"/"+ip, 1)
+			maddr += "/p2p/" + peerID.String()
+			result = append(result, maddr)
+		}
+	}
+	return result
+}
+
+// detectPublicIPs returns non-private, non-loopback IP addresses from network interfaces.
+func detectPublicIPs() []string {
+	var ips []string
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ips
+	}
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipNet.IP
+		if !ip.IsGlobalUnicast() {
+			continue
+		}
+		// Skip private IPv4 (10/8, 172.16/12, 192.168/16)
+		if ip4 := ip.To4(); ip4 != nil {
+			if ip4[0] == 10 ||
+				(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
+				(ip4[0] == 192 && ip4[1] == 168) {
+				continue
+			}
+		}
+		// Skip ULA IPv6 (fc00::/7)
+		if ip.To4() == nil && len(ip) == net.IPv6len && (ip[0]&0xfe) == 0xfc {
+			continue
+		}
+		ips = append(ips, ip.String())
+	}
+	return ips
+}
+
+// extractTCPPort finds the first TCP port from multiaddr listen addresses.
+func extractTCPPort(listenAddresses []string) string {
+	for _, addr := range listenAddresses {
+		parts := strings.Split(addr, "/")
+		for i, part := range parts {
+			if part == "tcp" && i+1 < len(parts) {
+				return parts[i+1]
+			}
+		}
+	}
+	return "7777"
+}
+
 func main() {
 	// Handle subcommands before starting the relay
 	if len(os.Args) > 1 {
@@ -129,6 +295,9 @@ func main() {
 			return
 		case "list-peers":
 			runListPeers()
+			return
+		case "info":
+			runInfo()
 			return
 		}
 	}

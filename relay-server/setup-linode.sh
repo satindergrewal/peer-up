@@ -7,10 +7,11 @@
 #   bash setup-linode.sh --check      # Health check only (no changes)
 #   bash setup-linode.sh --uninstall  # Remove service, firewall rules, tuning
 #
-# Peer authorization (via the relay-server binary):
-#   ./relay-server authorize <peer-id> [comment]
-#   ./relay-server deauthorize <peer-id>
-#   ./relay-server list-peers
+# Relay server subcommands (via the Go binary):
+#   ./relay-server info                          # Show peer ID, multiaddrs, QR code
+#   ./relay-server authorize <peer-id> [comment] # Allow a peer
+#   ./relay-server deauthorize <peer-id>         # Remove a peer
+#   ./relay-server list-peers                    # List authorized peers
 #
 # If run as root:
 #   - --check and --uninstall work directly as root
@@ -358,6 +359,12 @@ run_check() {
     check_warn() { echo "  [WARN] $1"; WARN=$((WARN + 1)); }
     check_fail() { echo "  [FAIL] $1"; FAIL=$((FAIL + 1)); }
 
+    # Get authoritative application info from the Go binary (not from logs or YAML grep)
+    RELAY_INFO=""
+    if [ -x "$RELAY_DIR/relay-server" ] && [ -f "$RELAY_DIR/relay-server.yaml" ]; then
+        RELAY_INFO=$(cd "$RELAY_DIR" && ./relay-server info 2>/dev/null) || true
+    fi
+
     # --- Binary ---
     echo "Binary:"
     if [ -f "$RELAY_DIR/relay-server" ]; then
@@ -378,14 +385,16 @@ run_check() {
     if [ -f "$RELAY_DIR/relay-server.yaml" ]; then
         check_pass "relay-server.yaml exists"
 
-        # Check connection gating
-        if grep -q 'enable_connection_gating:.*true' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
-            check_pass "Connection gating is ENABLED"
-        elif grep -q 'enable_connection_gating:.*false' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
-            check_fail "Connection gating is DISABLED — any peer can use your relay!"
-            echo "         Fix: set enable_connection_gating: true in relay-server.yaml"
+        # Check connection gating (parsed by Go binary, not YAML grep)
+        if [ -n "$RELAY_INFO" ]; then
+            if echo "$RELAY_INFO" | grep -q 'Connection gating: enabled'; then
+                check_pass "Connection gating is ENABLED"
+            else
+                check_fail "Connection gating is DISABLED — any peer can use your relay!"
+                echo "         Fix: set enable_connection_gating: true in relay-server.yaml"
+            fi
         else
-            check_warn "Cannot determine connection gating status"
+            check_warn "Cannot verify connection gating (build relay-server first)"
         fi
 
         # Check config permissions
@@ -420,8 +429,13 @@ run_check() {
     echo "Authorization:"
     if [ -f "$RELAY_DIR/relay_authorized_keys" ]; then
         check_pass "relay_authorized_keys exists"
-        PEER_COUNT=$(grep -cE '^[^#[:space:]]' "$RELAY_DIR/relay_authorized_keys" 2>/dev/null || echo 0)
-        if [ "$PEER_COUNT" -gt 0 ]; then
+        # Peer count from Go binary (validates peer IDs, not just line count)
+        if [ -n "$RELAY_INFO" ]; then
+            PEER_COUNT=$(echo "$RELAY_INFO" | grep '^Authorized peers:' | awk '{print $NF}')
+        else
+            PEER_COUNT=$(grep -cE '^[^#[:space:]]' "$RELAY_DIR/relay_authorized_keys" 2>/dev/null || echo 0)
+        fi
+        if [ "$PEER_COUNT" -gt 0 ] 2>/dev/null; then
             check_pass "$PEER_COUNT authorized peer(s) configured"
         else
             check_warn "relay_authorized_keys is empty — no peers can connect"
@@ -482,6 +496,15 @@ run_check() {
         check_warn "Port 7777 TCP not listening (service not running)"
     fi
 
+    # Check if WebSocket port 443 is configured and listening
+    if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
+        if ss -tlnp 2>/dev/null | grep -q ':443 ' || netstat -tlnp 2>/dev/null | grep -q ':443 '; then
+            check_pass "Port 443 TCP is listening (WebSocket anti-censorship)"
+        elif systemctl is-active --quiet relay-server 2>/dev/null; then
+            check_warn "Port 443 TCP not detected (WebSocket configured but not listening)"
+        fi
+    fi
+
     # Check firewall
     if command -v ufw &> /dev/null; then
         if run_sudo ufw status 2>/dev/null | grep -q '7777'; then
@@ -489,6 +512,16 @@ run_check() {
         else
             check_fail "UFW: port 7777 not in firewall rules"
             echo "         Fix: sudo ufw allow 7777/tcp && sudo ufw allow 7777/udp"
+        fi
+
+        # Check port 443 firewall if WebSocket configured
+        if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
+            if run_sudo ufw status 2>/dev/null | grep -q '443'; then
+                check_pass "UFW: port 443 is allowed (WebSocket)"
+            else
+                check_fail "UFW: port 443 not in firewall rules (WebSocket configured)"
+                echo "         Fix: sudo ufw allow 443/tcp"
+            fi
         fi
 
         if run_sudo ufw status 2>/dev/null | grep -q 'Status: active'; then
@@ -550,43 +583,22 @@ run_check() {
     fi
     echo
 
-    # --- Connection Info ---
+    # --- Connection Info (from Go binary — derived from key, not parsed from logs) ---
     echo "Connection info:"
-    # Try to get peer ID from journal logs
-    PEER_ID=$(journalctl -u relay-server --no-pager -n 100 2>/dev/null | grep 'Relay Peer ID:' | tail -1 | awk '{print $NF}')
-    if [ -z "$PEER_ID" ]; then
-        check_warn "Cannot determine Peer ID (start the service first)"
-    else
-        check_pass "Relay Peer ID: $PEER_ID"
-
-        # Detect public IPs
-        PUBLIC_IPV4=$(ip -4 addr show scope global 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1)
-        PUBLIC_IPV6=$(ip -6 addr show scope global 2>/dev/null | grep 'inet6 ' | awk '{print $2}' | cut -d/ -f1 | head -1)
-
-        if [ -n "$PUBLIC_IPV4" ]; then
-            MADDR_V4="/ip4/$PUBLIC_IPV4/tcp/7777/p2p/$PEER_ID"
-            echo "  [INFO] Multiaddr (IPv4): $MADDR_V4"
+    if [ -n "$RELAY_INFO" ]; then
+        PEER_ID=$(echo "$RELAY_INFO" | grep '^Peer ID:' | cut -d' ' -f3)
+        if [ -n "$PEER_ID" ]; then
+            check_pass "Relay Peer ID: $PEER_ID"
         fi
-        if [ -n "$PUBLIC_IPV6" ]; then
-            MADDR_V6="/ip6/$PUBLIC_IPV6/tcp/7777/p2p/$PEER_ID"
-            echo "  [INFO] Multiaddr (IPv6): $MADDR_V6"
-        fi
-
-        # Show QR code if qrencode is available
-        if command -v qrencode &>/dev/null; then
-            if [ -n "$PUBLIC_IPV4" ]; then
-                echo
-                echo "  Scan this QR code during 'peerup init':"
-                qrencode -t ANSIUTF8 "$MADDR_V4" 2>/dev/null || qrencode -t UTF8 "$MADDR_V4" 2>/dev/null
-            fi
-        fi
-
         echo
-        echo "  Quick setup on your nodes:"
-        if [ -n "$PUBLIC_IPV4" ]; then
-            echo "    peerup init   →  enter: $PUBLIC_IPV4:7777"
-        fi
-        echo "    Peer ID:  $PEER_ID"
+        # Print multiaddrs, QR code, and quick setup from relay-server info
+        echo "$RELAY_INFO" | awk '/^Multiaddrs:/,0' | while IFS= read -r line; do
+            echo "  $line"
+        done
+    elif [ -x "$RELAY_DIR/relay-server" ]; then
+        check_warn "Cannot retrieve relay info (check relay-server.yaml and identity key)"
+    else
+        check_warn "Cannot determine Peer ID (build relay-server first: go build -o relay-server .)"
     fi
     echo
 
@@ -654,6 +666,7 @@ if [ "$1" = "--uninstall" ]; then
     if command -v ufw &> /dev/null; then
         run_sudo ufw delete allow 7777/tcp > /dev/null 2>&1 && echo "  Removed 7777/tcp rule" || echo "  No 7777/tcp rule found"
         run_sudo ufw delete allow 7777/udp > /dev/null 2>&1 && echo "  Removed 7777/udp rule" || echo "  No 7777/udp rule found"
+        run_sudo ufw delete allow 443/tcp > /dev/null 2>&1 && echo "  Removed 443/tcp rule (WebSocket)" || true
     else
         echo "  UFW not found — remove port 7777 rules from your firewall manually"
     fi
@@ -787,6 +800,12 @@ if command -v ufw &> /dev/null; then
     run_sudo ufw allow 7777/tcp comment 'peer-up relay TCP' > /dev/null 2>&1 || true
     run_sudo ufw allow 7777/udp comment 'peer-up relay QUIC' > /dev/null 2>&1 || true
     echo "  UFW: ports 7777 TCP+UDP open"
+
+    # Open port 443 if WebSocket transport is configured (anti-censorship)
+    if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
+        run_sudo ufw allow 443/tcp comment 'peer-up relay WebSocket' > /dev/null 2>&1 || true
+        echo "  UFW: port 443 TCP open (WebSocket anti-censorship)"
+    fi
 else
     echo "  UFW not found — manually open port 7777 TCP+UDP in your firewall"
 fi
@@ -840,6 +859,10 @@ RestartSec=5
 
 # File descriptor limit for many concurrent connections
 LimitNOFILE=65536
+
+# Allow binding to privileged ports (443) without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 # Security hardening
 NoNewPrivileges=true
