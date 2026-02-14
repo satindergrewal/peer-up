@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,15 @@ import (
 
 	"github.com/satindergrewal/peer-up/internal/validate"
 )
+
+// connectionTag returns "[RELAYED]" or "[DIRECT]" based on the stream's connection path.
+func connectionTag(s network.Stream) string {
+	addr := s.Conn().RemoteMultiaddr().String()
+	if strings.Contains(addr, "/p2p-circuit") {
+		return "[RELAYED]"
+	}
+	return "[DIRECT]"
+}
 
 // ValidateServiceName checks that a service name is safe for use in protocol IDs.
 func ValidateServiceName(name string) error {
@@ -90,7 +100,8 @@ func (r *ServiceRegistry) RegisterService(svc *Service) error {
 func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream) {
 	return func(s network.Stream) {
 		remotePeer := s.Conn().RemotePeer()
-		log.Printf("📥 Incoming %s connection from %s", svc.Name, remotePeer.String()[:16]+"...")
+		tag := connectionTag(s)
+		log.Printf("📥 %s Incoming %s connection from %s", tag, svc.Name, remotePeer.String()[:16]+"...")
 
 		// Connect to local service (with timeout to avoid hanging on unreachable services)
 		localConn, err := net.DialTimeout("tcp", svc.LocalAddress, 10*time.Second)
@@ -152,7 +163,8 @@ func (r *ServiceRegistry) DialService(ctx context.Context, peerID peer.ID, proto
 		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 
-	log.Printf("✅ Connected to peer %s service %s", peerID.String()[:16]+"...", protocolID)
+	tag := connectionTag(s)
+	log.Printf("✅ %s Connected to peer %s service %s", tag, peerID.String()[:16]+"...", protocolID)
 
 	return &serviceStream{stream: s}, nil
 }
