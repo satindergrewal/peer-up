@@ -496,12 +496,18 @@ run_check() {
         check_warn "Port 7777 TCP not listening (service not running)"
     fi
 
-    # Check if WebSocket port 443 is configured and listening
-    if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
-        if ss -tlnp 2>/dev/null | grep -q ':443 ' || netstat -tlnp 2>/dev/null | grep -q ':443 '; then
-            check_pass "Port 443 TCP is listening (WebSocket anti-censorship)"
+    # Check WebSocket port if configured
+    WS_PORT=$(grep -oP 'tcp/\K[0-9]+(?=/ws)' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | head -1)
+    if [ -n "$WS_PORT" ]; then
+        WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
+        if [ "$WS_PORT_OWNER" = "relay-server" ]; then
+            check_pass "Port $WS_PORT TCP is listening (WebSocket anti-censorship)"
+        elif [ -n "$WS_PORT_OWNER" ]; then
+            check_fail "Port $WS_PORT is used by '$WS_PORT_OWNER' — conflicts with WebSocket transport"
+            echo "         Fix: use a different port (e.g., 8443) in relay-server.yaml"
+            echo "         Or stop $WS_PORT_OWNER: sudo systemctl stop $WS_PORT_OWNER"
         elif systemctl is-active --quiet relay-server 2>/dev/null; then
-            check_warn "Port 443 TCP not detected (WebSocket configured but not listening)"
+            check_warn "Port $WS_PORT TCP not detected (WebSocket configured but not listening)"
         fi
     fi
 
@@ -514,13 +520,13 @@ run_check() {
             echo "         Fix: sudo ufw allow 7777/tcp && sudo ufw allow 7777/udp"
         fi
 
-        # Check port 443 firewall if WebSocket configured
-        if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
-            if run_sudo ufw status 2>/dev/null | grep -q '443'; then
-                check_pass "UFW: port 443 is allowed (WebSocket)"
+        # Check WebSocket port firewall if configured
+        if [ -n "$WS_PORT" ]; then
+            if run_sudo ufw status 2>/dev/null | grep -q "$WS_PORT"; then
+                check_pass "UFW: port $WS_PORT is allowed (WebSocket)"
             else
-                check_fail "UFW: port 443 not in firewall rules (WebSocket configured)"
-                echo "         Fix: sudo ufw allow 443/tcp"
+                check_fail "UFW: port $WS_PORT not in firewall rules (WebSocket configured)"
+                echo "         Fix: sudo ufw allow ${WS_PORT}/tcp"
             fi
         fi
 
@@ -666,7 +672,10 @@ if [ "$1" = "--uninstall" ]; then
     if command -v ufw &> /dev/null; then
         run_sudo ufw delete allow 7777/tcp > /dev/null 2>&1 && echo "  Removed 7777/tcp rule" || echo "  No 7777/tcp rule found"
         run_sudo ufw delete allow 7777/udp > /dev/null 2>&1 && echo "  Removed 7777/udp rule" || echo "  No 7777/udp rule found"
-        run_sudo ufw delete allow 443/tcp > /dev/null 2>&1 && echo "  Removed 443/tcp rule (WebSocket)" || true
+        # Remove WebSocket port rule (443, 8443, or whatever was configured)
+        for WS_CLEANUP_PORT in 443 8443; do
+            run_sudo ufw delete allow "${WS_CLEANUP_PORT}/tcp" > /dev/null 2>&1 && echo "  Removed ${WS_CLEANUP_PORT}/tcp rule (WebSocket)" || true
+        done
     else
         echo "  UFW not found — remove port 7777 rules from your firewall manually"
     fi
@@ -801,10 +810,25 @@ if command -v ufw &> /dev/null; then
     run_sudo ufw allow 7777/udp comment 'peer-up relay QUIC' > /dev/null 2>&1 || true
     echo "  UFW: ports 7777 TCP+UDP open"
 
-    # Open port 443 if WebSocket transport is configured (anti-censorship)
-    if [ -f "$RELAY_DIR/relay-server.yaml" ] && grep -q 'tcp/443/ws' "$RELAY_DIR/relay-server.yaml" 2>/dev/null; then
-        run_sudo ufw allow 443/tcp comment 'peer-up relay WebSocket' > /dev/null 2>&1 || true
-        echo "  UFW: port 443 TCP open (WebSocket anti-censorship)"
+    # Open WebSocket port if configured (anti-censorship)
+    if [ -f "$RELAY_DIR/relay-server.yaml" ]; then
+        # Detect which WebSocket port is configured (443, 8443, or other)
+        WS_PORT=$(grep -oP 'tcp/\K[0-9]+(?=/ws)' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | head -1)
+        if [ -n "$WS_PORT" ]; then
+            # Check if the port is already in use by another service
+            WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
+            if [ -n "$WS_PORT_OWNER" ] && [ "$WS_PORT_OWNER" != "relay-server" ]; then
+                echo "  [WARN] Port $WS_PORT is already in use by: $WS_PORT_OWNER"
+                echo "         WebSocket transport will fail to bind on this port."
+                echo "         Options:"
+                echo "           1. Stop $WS_PORT_OWNER and free port $WS_PORT"
+                echo "           2. Use port 8443 instead: edit relay-server.yaml"
+                echo "              Change: tcp/$WS_PORT/ws  →  tcp/8443/ws"
+            else
+                run_sudo ufw allow "${WS_PORT}/tcp" comment 'peer-up relay WebSocket' > /dev/null 2>&1 || true
+                echo "  UFW: port $WS_PORT TCP open (WebSocket anti-censorship)"
+            fi
+        fi
     fi
 else
     echo "  UFW not found — manually open port 7777 TCP+UDP in your firewall"
