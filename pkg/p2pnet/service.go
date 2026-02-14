@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -91,8 +92,8 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 		remotePeer := s.Conn().RemotePeer()
 		log.Printf("📥 Incoming %s connection from %s", svc.Name, remotePeer.String()[:16]+"...")
 
-		// Connect to local service
-		localConn, err := net.Dial("tcp", svc.LocalAddress)
+		// Connect to local service (with timeout to avoid hanging on unreachable services)
+		localConn, err := net.DialTimeout("tcp", svc.LocalAddress, 10*time.Second)
 		if err != nil {
 			log.Printf("❌ Failed to connect to local service %s at %s: %v",
 				svc.Name, svc.LocalAddress, err)

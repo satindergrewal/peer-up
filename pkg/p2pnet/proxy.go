@@ -1,17 +1,19 @@
 package p2pnet
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
 // ProxyStreamToTCP creates a bidirectional proxy between a libp2p stream and a TCP connection
 func ProxyStreamToTCP(stream network.Stream, tcpAddr string) error {
-	// Connect to local TCP service
-	tcpConn, err := net.Dial("tcp", tcpAddr)
+	// Connect to local TCP service (with timeout to avoid hanging on unreachable services)
+	tcpConn, err := net.DialTimeout("tcp", tcpAddr, 10*time.Second)
 	if err != nil {
 		return err
 	}
@@ -167,4 +169,34 @@ func (l *TCPListener) Close() error {
 // Addr returns the listener's network address
 func (l *TCPListener) Addr() net.Addr {
 	return l.listener.Addr()
+}
+
+// DialWithRetry wraps a dial function with exponential backoff retry.
+// maxRetries is the number of retries after the first attempt (0 = no retry).
+// Returns a new dial function that retries on failure.
+func DialWithRetry(dialFunc func() (ServiceConn, error), maxRetries int) func() (ServiceConn, error) {
+	return func() (ServiceConn, error) {
+		var lastErr error
+		delay := time.Second
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			conn, err := dialFunc()
+			if err == nil {
+				if attempt > 0 {
+					log.Printf("Connection succeeded on attempt %d/%d", attempt+1, maxRetries+1)
+				}
+				return conn, nil
+			}
+			lastErr = err
+			if attempt < maxRetries {
+				log.Printf("Connection attempt %d/%d failed: %v (retrying in %s)",
+					attempt+1, maxRetries+1, err, delay)
+				time.Sleep(delay)
+				delay *= 2
+				if delay > 60*time.Second {
+					delay = 60 * time.Second
+				}
+			}
+		}
+		return nil, fmt.Errorf("all %d attempts failed: %w", maxRetries+1, lastErr)
+	}
 }
