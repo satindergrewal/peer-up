@@ -15,13 +15,16 @@ import (
 
 // reorderFlagsFirst moves flag arguments (--foo val) before positional args,
 // so Go's flag package can parse them regardless of argument order.
+// Every flag in peerup auth commands takes a value, so any --flag is followed
+// by exactly one value argument (regardless of what that value looks like).
 func reorderFlagsFirst(args []string) []string {
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
 		if strings.HasPrefix(args[i], "-") {
 			flags = append(flags, args[i])
-			// If this flag has a value argument (next arg is not a flag), include it
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			// All our flags (--config, --file, --comment) take a value.
+			// Always consume the next argument as the value.
+			if i+1 < len(args) {
 				flags = append(flags, args[i+1])
 				i++
 			}
