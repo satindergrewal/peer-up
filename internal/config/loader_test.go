@@ -1,0 +1,400 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// Minimal valid YAML for loading tests.
+const testConfigYAML = `
+identity:
+  key_file: "identity.key"
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/0"
+  force_private_reachability: false
+relay:
+  addresses:
+    - "/ip4/203.0.113.50/tcp/7777/p2p/12D3KooWRzaGMTqQbRHNMZkAYj8ALUXoK99qSjhiFLanDoVWK9An"
+  reservation_interval: "2m"
+discovery:
+  rendezvous: "peerup-test-net"
+  bootstrap_peers: []
+security:
+  authorized_keys_file: "authorized_keys"
+  enable_connection_gating: true
+protocols:
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"
+services:
+  ssh:
+    enabled: true
+    local_address: "localhost:22"
+names:
+  home: "12D3KooWPrmh163sTHW3mYQm7YsLsSR2wr71fPp4g6yjuGv3sGQt"
+`
+
+func writeTestConfig(t *testing.T, dir, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("write test config: %v", err)
+	}
+	return path
+}
+
+func TestLoadNodeConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTestConfig(t, dir, testConfigYAML)
+
+	cfg, err := LoadNodeConfig(path)
+	if err != nil {
+		t.Fatalf("LoadNodeConfig: %v", err)
+	}
+
+	if cfg.Identity.KeyFile != "identity.key" {
+		t.Errorf("KeyFile = %q, want %q", cfg.Identity.KeyFile, "identity.key")
+	}
+	if len(cfg.Network.ListenAddresses) != 1 {
+		t.Errorf("ListenAddresses count = %d, want 1", len(cfg.Network.ListenAddresses))
+	}
+	if cfg.Relay.ReservationInterval.Minutes() != 2 {
+		t.Errorf("ReservationInterval = %v, want 2m", cfg.Relay.ReservationInterval)
+	}
+	if cfg.Discovery.Rendezvous != "peerup-test-net" {
+		t.Errorf("Rendezvous = %q, want %q", cfg.Discovery.Rendezvous, "peerup-test-net")
+	}
+	if !cfg.Security.EnableConnectionGating {
+		t.Error("EnableConnectionGating should be true")
+	}
+	if cfg.Services["ssh"].LocalAddress != "localhost:22" {
+		t.Errorf("SSH local_address = %q, want %q", cfg.Services["ssh"].LocalAddress, "localhost:22")
+	}
+	if cfg.Names["home"] != "12D3KooWPrmh163sTHW3mYQm7YsLsSR2wr71fPp4g6yjuGv3sGQt" {
+		t.Errorf("Names[home] = %q", cfg.Names["home"])
+	}
+}
+
+func TestLoadNodeConfigMissingFile(t *testing.T) {
+	_, err := LoadNodeConfig("/nonexistent/path.yaml")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadNodeConfigInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTestConfig(t, dir, "not: [valid: yaml: {{{")
+
+	_, err := LoadNodeConfig(path)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoadNodeConfigInvalidDuration(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `
+identity:
+  key_file: "key"
+network:
+  listen_addresses: ["/ip4/0.0.0.0/tcp/0"]
+relay:
+  addresses: ["/ip4/1.2.3.4/tcp/7777/p2p/12D3KooWTest"]
+  reservation_interval: "not-a-duration"
+discovery:
+  rendezvous: "test"
+security:
+  authorized_keys_file: ""
+  enable_connection_gating: false
+protocols:
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"
+`
+	path := writeTestConfig(t, dir, yaml)
+
+	_, err := LoadNodeConfig(path)
+	if err == nil {
+		t.Error("expected error for invalid duration")
+	}
+}
+
+func TestValidateNodeConfig(t *testing.T) {
+	valid := &NodeConfig{
+		Identity:  IdentityConfig{KeyFile: "key"},
+		Network:   NetworkConfig{ListenAddresses: []string{"/ip4/0.0.0.0/tcp/0"}},
+		Relay:     RelayConfig{Addresses: []string{"/ip4/1.2.3.4/tcp/7777/p2p/X"}},
+		Discovery: DiscoveryConfig{Rendezvous: "test"},
+		Security:  SecurityConfig{EnableConnectionGating: false},
+		Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "/pingpong/1.0.0"}},
+	}
+
+	if err := ValidateNodeConfig(valid); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	}
+}
+
+func TestValidateNodeConfigMissingFields(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  NodeConfig
+	}{
+		{"no key_file", NodeConfig{
+			Network:   NetworkConfig{ListenAddresses: []string{"x"}},
+			Relay:     RelayConfig{Addresses: []string{"x"}},
+			Discovery: DiscoveryConfig{Rendezvous: "x"},
+			Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "x"}},
+		}},
+		{"no listen_addresses", NodeConfig{
+			Identity:  IdentityConfig{KeyFile: "x"},
+			Relay:     RelayConfig{Addresses: []string{"x"}},
+			Discovery: DiscoveryConfig{Rendezvous: "x"},
+			Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "x"}},
+		}},
+		{"no relay_addresses", NodeConfig{
+			Identity:  IdentityConfig{KeyFile: "x"},
+			Network:   NetworkConfig{ListenAddresses: []string{"x"}},
+			Discovery: DiscoveryConfig{Rendezvous: "x"},
+			Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "x"}},
+		}},
+		{"no rendezvous", NodeConfig{
+			Identity:  IdentityConfig{KeyFile: "x"},
+			Network:   NetworkConfig{ListenAddresses: []string{"x"}},
+			Relay:     RelayConfig{Addresses: []string{"x"}},
+			Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "x"}},
+		}},
+		{"no pingpong_id", NodeConfig{
+			Identity:  IdentityConfig{KeyFile: "x"},
+			Network:   NetworkConfig{ListenAddresses: []string{"x"}},
+			Relay:     RelayConfig{Addresses: []string{"x"}},
+			Discovery: DiscoveryConfig{Rendezvous: "x"},
+		}},
+		{"gating without auth_keys", NodeConfig{
+			Identity:  IdentityConfig{KeyFile: "x"},
+			Network:   NetworkConfig{ListenAddresses: []string{"x"}},
+			Relay:     RelayConfig{Addresses: []string{"x"}},
+			Discovery: DiscoveryConfig{Rendezvous: "x"},
+			Security:  SecurityConfig{EnableConnectionGating: true, AuthorizedKeysFile: ""},
+			Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "x"}},
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateNodeConfig(&tt.cfg); err == nil {
+				t.Error("expected validation error")
+			}
+		})
+	}
+}
+
+func TestResolveConfigPaths(t *testing.T) {
+	cfg := &NodeConfig{
+		Identity: IdentityConfig{KeyFile: "identity.key"},
+		Security: SecurityConfig{AuthorizedKeysFile: "authorized_keys"},
+	}
+
+	ResolveConfigPaths(cfg, "/home/user/.config/peerup")
+
+	want := "/home/user/.config/peerup/identity.key"
+	if cfg.Identity.KeyFile != want {
+		t.Errorf("KeyFile = %q, want %q", cfg.Identity.KeyFile, want)
+	}
+
+	want = "/home/user/.config/peerup/authorized_keys"
+	if cfg.Security.AuthorizedKeysFile != want {
+		t.Errorf("AuthorizedKeysFile = %q, want %q", cfg.Security.AuthorizedKeysFile, want)
+	}
+}
+
+func TestResolveConfigPathsAbsolute(t *testing.T) {
+	cfg := &NodeConfig{
+		Identity: IdentityConfig{KeyFile: "/absolute/path/key"},
+		Security: SecurityConfig{AuthorizedKeysFile: "/absolute/auth"},
+	}
+
+	ResolveConfigPaths(cfg, "/home/user/.config/peerup")
+
+	if cfg.Identity.KeyFile != "/absolute/path/key" {
+		t.Errorf("absolute path should not change: %q", cfg.Identity.KeyFile)
+	}
+	if cfg.Security.AuthorizedKeysFile != "/absolute/auth" {
+		t.Errorf("absolute path should not change: %q", cfg.Security.AuthorizedKeysFile)
+	}
+}
+
+func TestFindConfigFileExplicit(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTestConfig(t, dir, "identity:\n  key_file: x")
+
+	found, err := FindConfigFile(path)
+	if err != nil {
+		t.Fatalf("FindConfigFile: %v", err)
+	}
+	if found != path {
+		t.Errorf("found = %q, want %q", found, path)
+	}
+}
+
+func TestFindConfigFileExplicitMissing(t *testing.T) {
+	_, err := FindConfigFile("/nonexistent/config.yaml")
+	if err == nil {
+		t.Error("expected error for missing explicit path")
+	}
+}
+
+func TestFindConfigFileLocalDir(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "peerup.yaml")
+	if err := os.WriteFile(configPath, []byte("identity:\n  key_file: x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Change to that dir temporarily
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	found, err := FindConfigFile("")
+	if err != nil {
+		t.Fatalf("FindConfigFile: %v", err)
+	}
+	if found != "peerup.yaml" {
+		t.Errorf("found = %q, want %q", found, "peerup.yaml")
+	}
+}
+
+func TestLoadRelayServerConfig(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `
+identity:
+  key_file: "relay.key"
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/7777"
+security:
+  authorized_keys_file: "authorized_keys"
+  enable_connection_gating: true
+`
+	path := filepath.Join(dir, "relay.yaml")
+	os.WriteFile(path, []byte(yaml), 0600)
+
+	cfg, err := LoadRelayServerConfig(path)
+	if err != nil {
+		t.Fatalf("LoadRelayServerConfig: %v", err)
+	}
+
+	if cfg.Identity.KeyFile != "relay.key" {
+		t.Errorf("KeyFile = %q", cfg.Identity.KeyFile)
+	}
+	if len(cfg.Network.ListenAddresses) != 1 {
+		t.Errorf("ListenAddresses count = %d", len(cfg.Network.ListenAddresses))
+	}
+}
+
+func TestConfigVersionDefaultsTo1(t *testing.T) {
+	dir := t.TempDir()
+	// Config without version field — should default to 1
+	path := writeTestConfig(t, dir, testConfigYAML)
+
+	cfg, err := LoadNodeConfig(path)
+	if err != nil {
+		t.Fatalf("LoadNodeConfig: %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Errorf("Version = %d, want 1 (default)", cfg.Version)
+	}
+}
+
+func TestConfigVersionExplicit(t *testing.T) {
+	dir := t.TempDir()
+	yaml := "version: 1\n" + testConfigYAML
+	path := writeTestConfig(t, dir, yaml)
+
+	cfg, err := LoadNodeConfig(path)
+	if err != nil {
+		t.Fatalf("LoadNodeConfig: %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Errorf("Version = %d, want 1", cfg.Version)
+	}
+}
+
+func TestConfigVersionFutureRejected(t *testing.T) {
+	dir := t.TempDir()
+	yaml := "version: 999\n" + testConfigYAML
+	path := writeTestConfig(t, dir, yaml)
+
+	_, err := LoadNodeConfig(path)
+	if err == nil {
+		t.Error("expected error for future config version")
+	}
+}
+
+func TestRelayConfigVersionDefaultsTo1(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `
+identity:
+  key_file: "relay.key"
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/7777"
+security:
+  enable_connection_gating: false
+`
+	path := filepath.Join(dir, "relay.yaml")
+	os.WriteFile(path, []byte(yaml), 0600)
+
+	cfg, err := LoadRelayServerConfig(path)
+	if err != nil {
+		t.Fatalf("LoadRelayServerConfig: %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Errorf("Version = %d, want 1 (default)", cfg.Version)
+	}
+}
+
+func TestRelayConfigVersionFutureRejected(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `
+version: 999
+identity:
+  key_file: "relay.key"
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/7777"
+security:
+  enable_connection_gating: false
+`
+	path := filepath.Join(dir, "relay.yaml")
+	os.WriteFile(path, []byte(yaml), 0600)
+
+	_, err := LoadRelayServerConfig(path)
+	if err == nil {
+		t.Error("expected error for future relay config version")
+	}
+}
+
+func TestValidateRelayServerConfig(t *testing.T) {
+	valid := &RelayServerConfig{
+		Identity: IdentityConfig{KeyFile: "key"},
+		Network:  RelayNetworkConfig{ListenAddresses: []string{"/ip4/0.0.0.0/tcp/7777"}},
+		Security: RelaySecurityConfig{EnableConnectionGating: false},
+	}
+
+	if err := ValidateRelayServerConfig(valid); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	}
+
+	invalid := &RelayServerConfig{
+		Network:  RelayNetworkConfig{ListenAddresses: []string{"/ip4/0.0.0.0/tcp/7777"}},
+		Security: RelaySecurityConfig{EnableConnectionGating: false},
+	}
+
+	if err := ValidateRelayServerConfig(invalid); err == nil {
+		t.Error("expected error for missing key_file")
+	}
+}

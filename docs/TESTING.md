@@ -364,4 +364,50 @@ Cannot resolve target "home"
 
 ---
 
+## Unit Tests
+
+peer-up has automated unit tests for core packages. These run in CI (GitHub Actions) on every push.
+
+### Running Tests
+
+```bash
+# Run all tests with race detection
+go test -race -count=1 github.com/satindergrewal/peer-up/...
+
+# Run tests for a specific package
+go test -race ./internal/config/
+go test -race ./internal/auth/
+go test -race ./internal/invite/
+go test -race ./cmd/peerup/
+
+# Run relay-server tests (separate module)
+cd relay-server && go test -race ./...
+
+# Verbose output (see individual test names)
+go test -race -v ./internal/auth/
+```
+
+### Test Coverage
+
+| Package | Tests | What's covered |
+|---------|-------|---------------|
+| `internal/config` | `loader_test.go` | Config loading, YAML parsing, validation (all config types), path resolution, config version handling, FindConfigFile discovery |
+| `internal/auth` | `gater_test.go` | ConnectionGater: inbound/outbound filtering, peer authorization, hot-reload |
+| `internal/auth` | `authorized_keys_test.go` | File loading, comment handling, invalid peer IDs, missing files |
+| `internal/auth` | `manage_test.go` | AddPeer (with duplicate/sanitize), RemovePeer (atomic write, preserves comments), ListPeers |
+| `internal/invite` | `code_test.go` | Encode/decode round-trip, invalid codes, trailing junk rejection |
+| `cmd/peerup` | `relay_input_test.go` | Relay address parsing (IPv4, IPv6, multiaddr detection, port validation) |
+
+### CI Pipeline
+
+GitHub Actions runs on every push to `main` and `dev/next-iteration`:
+
+1. **Build** — all modules compile (`go build ./...`)
+2. **Vet** — static analysis (`go vet ./...`)
+3. **Test** — all tests with race detection (`go test -race -count=1 ./...`)
+
+Config: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+
+---
+
 **Last Updated**: 2026-02-14

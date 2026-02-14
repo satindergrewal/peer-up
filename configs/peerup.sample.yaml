@@ -9,6 +9,9 @@
 #   3. ~/.config/peerup/config.yaml
 #   4. /etc/peerup/config.yaml
 
+# Config schema version (do not change manually)
+version: 1
+
 identity:
   # Path to the key file for persistent peer identity
   # Relative paths are resolved from the config file's directory

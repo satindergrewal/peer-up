@@ -4,8 +4,13 @@ import (
 	"time"
 )
 
+// CurrentConfigVersion is the latest configuration schema version.
+// Bump this when adding fields that require migration.
+const CurrentConfigVersion = 1
+
 // HomeNodeConfig represents configuration for the home node
 type HomeNodeConfig struct {
+	Version   int             `yaml:"version,omitempty"`
 	Identity  IdentityConfig  `yaml:"identity"`
 	Network   NetworkConfig   `yaml:"network"`
 	Relay     RelayConfig     `yaml:"relay"`
@@ -29,6 +34,7 @@ type ClientNodeConfig struct {
 
 // RelayServerConfig represents configuration for the relay server
 type RelayServerConfig struct {
+	Version  int                  `yaml:"version,omitempty"`
 	Identity IdentityConfig       `yaml:"identity"`
 	Network  RelayNetworkConfig   `yaml:"network"`
 	Security RelaySecurityConfig  `yaml:"security"`
@@ -105,6 +111,7 @@ type NodeConfig = HomeNodeConfig
 
 // Config is a unified configuration structure for all components
 type Config struct {
+	Version   int             `yaml:"version,omitempty"`
 	Identity  IdentityConfig  `yaml:"identity"`
 	Network   NetworkConfig   `yaml:"network"`
 	Relay     RelayConfig     `yaml:"relay,omitempty"`

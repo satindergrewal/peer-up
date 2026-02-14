@@ -19,6 +19,7 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 
 	// Parse YAML with custom unmarshaling for durations
 	var rawConfig struct {
+		Version   int             `yaml:"version,omitempty"`
 		Identity  IdentityConfig  `yaml:"identity"`
 		Network   NetworkConfig   `yaml:"network"`
 		Relay     struct {
@@ -36,6 +37,15 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
+	// Default version to 1 for configs written before versioning was added
+	version := rawConfig.Version
+	if version == 0 {
+		version = 1
+	}
+	if version > CurrentConfigVersion {
+		return nil, fmt.Errorf("config version %d is newer than supported version %d; please upgrade peerup", version, CurrentConfigVersion)
+	}
+
 	// Parse duration
 	reservationInterval, err := time.ParseDuration(rawConfig.Relay.ReservationInterval)
 	if err != nil {
@@ -43,6 +53,7 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 	}
 
 	config := &HomeNodeConfig{
+		Version:   version,
 		Identity:  rawConfig.Identity,
 		Network:   rawConfig.Network,
 		Discovery: rawConfig.Discovery,
@@ -116,6 +127,14 @@ func LoadRelayServerConfig(path string) (*RelayServerConfig, error) {
 	var config RelayServerConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Default version to 1 for configs written before versioning was added
+	if config.Version == 0 {
+		config.Version = 1
+	}
+	if config.Version > CurrentConfigVersion {
+		return nil, fmt.Errorf("config version %d is newer than supported version %d; please upgrade relay-server", config.Version, CurrentConfigVersion)
 	}
 
 	return &config, nil

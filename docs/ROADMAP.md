@@ -254,8 +254,14 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] Audit logging — every peer auth decision logged with peer ID, action, timestamp, result (structured JSON for SIEM integration)
 - [ ] Trace correlation IDs — propagate through relay path for debugging multi-hop connections
 
+**Pre-Refactoring Foundation** (completed before main 4C work):
+- [x] GitHub Actions CI — build, vet, and test on every push to `main` and `dev/next-iteration`
+- [x] Config version field — `version: 1` in all configs; loader defaults missing version to 1, rejects future versions. Enables safe schema migration.
+- [x] Unit tests for config package — loader, validation, path resolution, version handling, relay config
+- [x] Unit tests for auth package — gater (inbound/outbound/update), authorized_keys (load/parse/comments), manage (add/remove/list/duplicate/sanitize)
+
 **Code Quality**:
-- [ ] Unit test suite — auth (gater, authorized_keys), config (loader, validation), naming, proxy
+- [ ] Expand test coverage — naming, proxy, invite edge cases, relay input parsing
 - [ ] Structured logging — migrate to `log/slog` with levels and structured fields
 - [ ] Sentinel errors — define `ErrServiceNotFound`, `ErrPeerNotAuthorized`, etc.
 - [ ] Deduplicate proxy pattern — extract single `bidirectionalProxy()` function (currently copy-pasted 4x)
@@ -796,6 +802,8 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 - Invite codes expire and are single-use
 
 **Phase 4C Success**:
+- CI pipeline runs on every push (build + vet + test with `-race`)
+- Config versioning enables safe schema migration across deployments
 - `go test -race ./...` passes with >60% coverage on auth, config, naming, proxy
 - Relay has explicit resource limits (not infinite)
 - `authorized_keys` changes take effect without restart
@@ -863,6 +871,6 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 ---
 
 **Last Updated**: 2026-02-14
-**Current Phase**: 4B Complete, 4C Next
+**Current Phase**: 4C In Progress (pre-refactoring foundation: CI, tests, config versioning complete)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Core Hardening & Security (relay limits, self-healing, config validation, daemon mode, tests, reconnection)
+**Next Milestone**: Core Hardening & Security — continue with libp2p upgrade, resource limits, self-healing, daemon mode, reconnection
