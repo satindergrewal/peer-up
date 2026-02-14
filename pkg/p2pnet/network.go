@@ -3,7 +3,7 @@ package p2pnet
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -31,22 +31,18 @@ func (t *holePunchTracer) Trace(evt *holepunch.Event) {
 
 	switch e := evt.Evt.(type) {
 	case *holepunch.StartHolePunchEvt:
-		log.Printf("🕳️  Hole punch STARTED with %s (%d addrs, RTT %s)",
-			short, len(e.RemoteAddrs), e.RTT)
+		slog.Info("hole punch started", "peer", short, "addrs", len(e.RemoteAddrs), "rtt", e.RTT)
 	case *holepunch.EndHolePunchEvt:
 		if e.Success {
-			log.Printf("🕳️  Hole punch SUCCEEDED with %s (took %s)",
-				short, e.EllapsedTime)
+			slog.Info("hole punch succeeded", "peer", short, "elapsed", e.EllapsedTime)
 		} else {
-			log.Printf("🕳️  Hole punch FAILED with %s (took %s): %s",
-				short, e.EllapsedTime, e.Error)
+			slog.Warn("hole punch failed", "peer", short, "elapsed", e.EllapsedTime, "error", e.Error)
 		}
 	case *holepunch.DirectDialEvt:
 		if e.Success {
-			log.Printf("🕳️  Direct dial SUCCEEDED to %s (took %s)",
-				short, e.EllapsedTime)
+			slog.Info("direct dial succeeded", "peer", short, "elapsed", e.EllapsedTime)
 		} else {
-			log.Printf("🕳️  Direct dial FAILED to %s: %s", short, e.Error)
+			slog.Warn("direct dial failed", "peer", short, "error", e.Error)
 		}
 	}
 }
@@ -137,8 +133,7 @@ func New(cfg *Config) (*Network, error) {
 			return nil, fmt.Errorf("failed to load authorized_keys: %w", err)
 		}
 
-		logger := log.New(log.Writer(), "[p2pnet] ", log.LstdFlags)
-		gater := auth.NewAuthorizedPeerGater(authorizedPeers, logger)
+		gater := auth.NewAuthorizedPeerGater(authorizedPeers)
 		hostOpts = append(hostOpts, libp2p.ConnectionGater(gater))
 	}
 

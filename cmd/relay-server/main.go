@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +22,13 @@ import (
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 	"github.com/satindergrewal/peer-up/internal/identity"
+)
+
+// Set via -ldflags at build time.
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
 )
 
 // buildRelayResources converts config resource settings into relayv2 types.
@@ -319,6 +328,10 @@ func main() {
 		case "help", "--help", "-h":
 			printUsage()
 			return
+		case "version", "--version":
+			fmt.Printf("relay-server %s (%s) built %s\n", version, commit, buildDate)
+			fmt.Printf("Go %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+			return
 		case "authorize":
 			runAuthorize(os.Args[2:])
 			return
@@ -338,10 +351,14 @@ func main() {
 		}
 	}
 
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("=== Private libp2p Relay Server ===")
+	fmt.Printf("=== Private libp2p Relay Server (%s) ===\n", version)
 	fmt.Println()
 
 	// Load configuration
@@ -386,7 +403,7 @@ func main() {
 			fmt.Printf("✅ Loaded %d authorized peer(s) from %s\n", len(authorizedPeers), cfg.Security.AuthorizedKeysFile)
 		}
 
-		gater = auth.NewAuthorizedPeerGater(authorizedPeers, log.Default())
+		gater = auth.NewAuthorizedPeerGater(authorizedPeers)
 	} else {
 		fmt.Println("⚠️  WARNING: Connection gating is DISABLED - any peer can use this relay!")
 	}

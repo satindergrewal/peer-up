@@ -2,10 +2,25 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"runtime"
+)
+
+// Set via -ldflags at build time:
+//
+//	go build -ldflags "-X main.version=0.1.0 -X main.commit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o peerup ./cmd/peerup
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -30,11 +45,18 @@ func main() {
 		runInvite(os.Args[2:])
 	case "join":
 		runJoin(os.Args[2:])
+	case "version", "--version":
+		printVersion()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func printVersion() {
+	fmt.Printf("peerup %s (%s) built %s\n", version, commit, buildDate)
+	fmt.Printf("Go %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 func printUsage() {
@@ -57,6 +79,8 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("  invite [--name \"home\"]                   Generate an invite code for pairing")
 	fmt.Println("  join <code> [--name \"laptop\"]            Accept an invite and auto-configure")
+	fmt.Println()
+	fmt.Println("  version                                 Show version information")
 	fmt.Println()
 	fmt.Println("The <target> can be a peer ID or a name from the names section of your config.")
 	fmt.Println()

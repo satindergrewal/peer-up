@@ -457,4 +457,12 @@ Config: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 
 ---
 
+## Logging in Tests
+
+Library code uses `log/slog` for structured logging. In tests, slog output goes to stderr by default, which `go test` captures and only shows on failure. No special test configuration is needed.
+
+For benchmarks that previously used `log.New(io.Discard, ...)` to suppress logging, slog's default handler is used instead — the small overhead is part of the realistic benchmark measurement.
+
+---
+
 **Last Updated**: 2026-02-15

@@ -921,8 +921,11 @@ echo
 echo "[6/8] Building relay-server..."
 PROJECT_ROOT="$(cd "$RELAY_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
-go build -o "$RELAY_DIR/relay-server" ./cmd/relay-server
-echo "  Built: $RELAY_DIR/relay-server"
+BUILD_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
+echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
 echo
 
 # --- 6. File permissions ---

@@ -46,7 +46,7 @@ func LoadHomeNodeConfig(path string) (*HomeNodeConfig, error) {
 		version = 1
 	}
 	if version > CurrentConfigVersion {
-		return nil, fmt.Errorf("config version %d is newer than supported version %d; please upgrade peerup", version, CurrentConfigVersion)
+		return nil, fmt.Errorf("%w: version %d is newer than supported version %d; please upgrade peerup", ErrConfigVersionTooNew, version, CurrentConfigVersion)
 	}
 
 	// Parse duration
@@ -137,7 +137,7 @@ func LoadRelayServerConfig(path string) (*RelayServerConfig, error) {
 		config.Version = 1
 	}
 	if config.Version > CurrentConfigVersion {
-		return nil, fmt.Errorf("config version %d is newer than supported version %d; please upgrade relay-server", config.Version, CurrentConfigVersion)
+		return nil, fmt.Errorf("%w: version %d is newer than supported version %d; please upgrade relay-server", ErrConfigVersionTooNew, config.Version, CurrentConfigVersion)
 	}
 
 	// Apply defaults for zero-valued resource fields
@@ -194,7 +194,7 @@ func ValidateClientNodeConfig(cfg *ClientNodeConfig) error {
 func FindConfigFile(explicitPath string) (string, error) {
 	if explicitPath != "" {
 		if _, err := os.Stat(explicitPath); err != nil {
-			return "", fmt.Errorf("config file not found: %s", explicitPath)
+			return "", fmt.Errorf("%w: %s", ErrConfigNotFound, explicitPath)
 		}
 		return explicitPath, nil
 	}
@@ -216,7 +216,7 @@ func FindConfigFile(explicitPath string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no config file found; searched:\n  %s\n\nRun 'peerup init' to create one, or use --config <path>", strings.Join(searchPaths, "\n  "))
+	return "", fmt.Errorf("%w; searched:\n  %s\n\nRun 'peerup init' to create one, or use --config <path>", ErrConfigNotFound, strings.Join(searchPaths, "\n  "))
 }
 
 // LoadNodeConfig loads unified node configuration from a YAML file.

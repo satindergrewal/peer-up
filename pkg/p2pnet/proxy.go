@@ -3,88 +3,71 @@ package p2pnet
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
-// ProxyStreamToTCP creates a bidirectional proxy between a libp2p stream and a TCP connection
+// HalfCloseConn is a connection that supports half-close (CloseWrite).
+// Both ServiceConn (libp2p streams) and tcpHalfCloser (TCP connections) implement this.
+type HalfCloseConn interface {
+	io.ReadWriteCloser
+	CloseWrite() error
+}
+
+// tcpHalfCloser adapts a net.Conn to support CloseWrite via type assertion.
+type tcpHalfCloser struct{ net.Conn }
+
+func (t *tcpHalfCloser) CloseWrite() error {
+	if tc, ok := t.Conn.(*net.TCPConn); ok {
+		return tc.CloseWrite()
+	}
+	return nil
+}
+
+// BidirectionalProxy copies data between two half-close-capable connections.
+// It uses two goroutines for each direction, propagates half-close (CloseWrite)
+// when one side finishes sending, and waits for both directions to complete.
+// logPrefix identifies the connection in log messages (e.g., "ssh", "proxy").
+func BidirectionalProxy(a, b HalfCloseConn, logPrefix string) {
+	aDone := make(chan struct{})
+	bDone := make(chan struct{})
+
+	// a → b
+	go func() {
+		defer close(aDone)
+		_, err := io.Copy(b, a)
+		if err != nil && err != io.EOF {
+			slog.Warn("copy error", "prefix", logPrefix, "direction", "a→b", "error", err)
+		}
+		b.CloseWrite()
+	}()
+
+	// b → a
+	go func() {
+		defer close(bDone)
+		_, err := io.Copy(a, b)
+		if err != nil && err != io.EOF {
+			slog.Warn("copy error", "prefix", logPrefix, "direction", "b→a", "error", err)
+		}
+		a.CloseWrite()
+	}()
+
+	<-aDone
+	<-bDone
+	a.Close()
+	b.Close()
+}
+
+// ProxyStreamToTCP creates a bidirectional proxy between a libp2p stream and a local TCP service.
 func ProxyStreamToTCP(stream network.Stream, tcpAddr string) error {
-	// Connect to local TCP service (with timeout to avoid hanging on unreachable services)
 	tcpConn, err := net.DialTimeout("tcp", tcpAddr, 10*time.Second)
 	if err != nil {
 		return err
 	}
-
-	tcpDone := make(chan struct{})
-	streamDone := make(chan struct{})
-
-	// TCP → Stream
-	go func() {
-		defer close(tcpDone)
-		_, err := io.Copy(stream, tcpConn)
-		if err != nil && err != io.EOF {
-			log.Printf("TCP→Stream error: %v", err)
-		}
-		stream.CloseWrite()
-	}()
-
-	// Stream → TCP
-	go func() {
-		defer close(streamDone)
-		_, err := io.Copy(tcpConn, stream)
-		if err != nil && err != io.EOF {
-			log.Printf("Stream→TCP error: %v", err)
-		}
-		if tc, ok := tcpConn.(*net.TCPConn); ok {
-			tc.CloseWrite()
-		}
-	}()
-
-	<-tcpDone
-	<-streamDone
-
-	tcpConn.Close()
-	stream.Close()
-
-	return nil
-}
-
-// ProxyTCPToStream creates a bidirectional proxy between a TCP connection and a libp2p stream
-func ProxyTCPToStream(tcpConn net.Conn, stream network.Stream) error {
-	tcpDone := make(chan struct{})
-	streamDone := make(chan struct{})
-
-	// TCP → Stream
-	go func() {
-		defer close(tcpDone)
-		_, err := io.Copy(stream, tcpConn)
-		if err != nil && err != io.EOF {
-			log.Printf("TCP→Stream error: %v", err)
-		}
-		stream.CloseWrite()
-	}()
-
-	// Stream → TCP
-	go func() {
-		defer close(streamDone)
-		_, err := io.Copy(tcpConn, stream)
-		if err != nil && err != io.EOF {
-			log.Printf("Stream→TCP error: %v", err)
-		}
-		if tc, ok := tcpConn.(*net.TCPConn); ok {
-			tc.CloseWrite()
-		}
-	}()
-
-	<-tcpDone
-	<-streamDone
-
-	tcpConn.Close()
-	stream.Close()
-
+	BidirectionalProxy(&serviceStream{stream: stream}, &tcpHalfCloser{tcpConn}, "proxy")
 	return nil
 }
 
@@ -121,44 +104,14 @@ func (l *TCPListener) Serve() error {
 
 // handleConnection handles a single TCP connection
 func (l *TCPListener) handleConnection(tcpConn net.Conn) {
-	// Dial P2P service
 	serviceConn, err := l.dialFunc()
 	if err != nil {
-		log.Printf("Failed to dial P2P service: %v", err)
+		slog.Error("failed to dial P2P service", "error", err)
 		tcpConn.Close()
 		return
 	}
 
-	tcpDone := make(chan struct{})
-	streamDone := make(chan struct{})
-
-	// TCP → Stream
-	go func() {
-		defer close(tcpDone)
-		_, err := io.Copy(serviceConn, tcpConn)
-		if err != nil && err != io.EOF {
-			log.Printf("TCP→Stream error: %v", err)
-		}
-		serviceConn.CloseWrite()
-	}()
-
-	// Stream → TCP
-	go func() {
-		defer close(streamDone)
-		_, err := io.Copy(tcpConn, serviceConn)
-		if err != nil && err != io.EOF {
-			log.Printf("Stream→TCP error: %v", err)
-		}
-		if tc, ok := tcpConn.(*net.TCPConn); ok {
-			tc.CloseWrite()
-		}
-	}()
-
-	<-tcpDone
-	<-streamDone
-
-	tcpConn.Close()
-	serviceConn.Close()
+	BidirectionalProxy(&tcpHalfCloser{tcpConn}, serviceConn, "proxy")
 }
 
 // Close closes the TCP listener
@@ -182,14 +135,14 @@ func DialWithRetry(dialFunc func() (ServiceConn, error), maxRetries int) func() 
 			conn, err := dialFunc()
 			if err == nil {
 				if attempt > 0 {
-					log.Printf("Connection succeeded on attempt %d/%d", attempt+1, maxRetries+1)
+					slog.Info("connection succeeded", "attempt", attempt+1, "max", maxRetries+1)
 				}
 				return conn, nil
 			}
 			lastErr = err
 			if attempt < maxRetries {
-				log.Printf("Connection attempt %d/%d failed: %v (retrying in %s)",
-					attempt+1, maxRetries+1, err, delay)
+				slog.Warn("connection attempt failed",
+					"attempt", attempt+1, "max", maxRetries+1, "error", err, "retry_in", delay)
 				time.Sleep(delay)
 				delay *= 2
 				if delay > 60*time.Second {

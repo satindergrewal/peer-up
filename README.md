@@ -15,7 +15,7 @@ A libp2p-based peer-to-peer network platform that enables secure connections acr
 
 ## Current Status
 
-- **Single Binary** - One `peerup` binary with subcommands: `init`, `serve`, `proxy`, `ping`, `invite`, `join`, `whoami`, `auth`, `relay`
+- **Single Binary** - One `peerup` binary with subcommands: `init`, `serve`, `proxy`, `ping`, `invite`, `join`, `whoami`, `auth`, `relay`, `version`
 - **60-Second Onboarding** - `peerup invite` + `peerup join` pairs two machines with zero manual config
 - **Easy Setup** - `peerup init` interactive wizard generates config, keys, and authorized_keys
 - **Standard Config** - Auto-discovers config from `./peerup.yaml` or `~/.config/peerup/config.yaml`
@@ -222,11 +222,17 @@ peerup ping home
 # Build peerup (single binary for everything)
 go build -o peerup ./cmd/peerup
 
+# Build with version info (recommended for deployments)
+go build -ldflags "-X main.version=0.1.0 -X main.commit=$(git rev-parse --short HEAD) -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o peerup ./cmd/peerup
+
 # Build relay server (into relay-server/ deployment directory)
 go build -o relay-server/relay-server ./cmd/relay-server
 
 # Cross-compile for Linux (e.g., deploy to a Linux server)
 GOOS=linux GOARCH=amd64 go build -o peerup ./cmd/peerup
+
+# Check version
+./peerup version
 
 # Run all tests
 go test -race -count=1 ./...

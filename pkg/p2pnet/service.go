@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -80,7 +80,7 @@ func (r *ServiceRegistry) RegisterService(svc *Service) error {
 
 	// Check if service already registered
 	if _, exists := r.services[svc.Name]; exists {
-		return fmt.Errorf("service %s already registered", svc.Name)
+		return fmt.Errorf("%w: %s", ErrServiceAlreadyRegistered, svc.Name)
 	}
 
 	// Register service
@@ -90,8 +90,7 @@ func (r *ServiceRegistry) RegisterService(svc *Service) error {
 	pid := protocol.ID(svc.Protocol)
 	r.host.SetStreamHandler(pid, r.handleServiceStream(svc))
 
-	log.Printf("✅ Registered service: %s (protocol: %s, local: %s)",
-		svc.Name, svc.Protocol, svc.LocalAddress)
+	slog.Info("registered service", "service", svc.Name, "protocol", svc.Protocol, "local", svc.LocalAddress)
 
 	return nil
 }
@@ -101,53 +100,21 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 	return func(s network.Stream) {
 		remotePeer := s.Conn().RemotePeer()
 		tag := connectionTag(s)
-		log.Printf("📥 %s Incoming %s connection from %s", tag, svc.Name, remotePeer.String()[:16]+"...")
+		short := remotePeer.String()[:16] + "..."
+		slog.Info("incoming connection", "path", tag, "service", svc.Name, "peer", short)
 
 		// Connect to local service (with timeout to avoid hanging on unreachable services)
 		localConn, err := net.DialTimeout("tcp", svc.LocalAddress, 10*time.Second)
 		if err != nil {
-			log.Printf("❌ Failed to connect to local service %s at %s: %v",
-				svc.Name, svc.LocalAddress, err)
+			slog.Error("failed to connect to local service", "service", svc.Name, "addr", svc.LocalAddress, "error", err)
 			s.Reset()
 			return
 		}
 
 		// Bidirectional proxy with half-close propagation
-		tcpDone := make(chan struct{})
-		streamDone := make(chan struct{})
+		BidirectionalProxy(&serviceStream{stream: s}, &tcpHalfCloser{localConn}, svc.Name)
 
-		// Local TCP -> Stream
-		go func() {
-			defer close(tcpDone)
-			_, err := io.Copy(s, localConn)
-			if err != nil && err != io.EOF {
-				log.Printf("⚠️  Local→Stream copy error for %s: %v", svc.Name, err)
-			}
-			// Signal remote peer: no more data coming from this side
-			s.CloseWrite()
-		}()
-
-		// Stream -> Local TCP
-		go func() {
-			defer close(streamDone)
-			_, err := io.Copy(localConn, s)
-			if err != nil && err != io.EOF {
-				log.Printf("⚠️  Stream→Local copy error for %s: %v", svc.Name, err)
-			}
-			// Signal local service: no more data coming from this side
-			if tc, ok := localConn.(*net.TCPConn); ok {
-				tc.CloseWrite()
-			}
-		}()
-
-		// Wait for both directions to finish (safe: each signals the other via CloseWrite)
-		<-tcpDone
-		<-streamDone
-
-		localConn.Close()
-		s.Close()
-
-		log.Printf("✅ Closed %s connection from %s", svc.Name, remotePeer.String()[:16]+"...")
+		slog.Info("closed connection", "service", svc.Name, "peer", short)
 	}
 }
 
@@ -155,7 +122,7 @@ func (r *ServiceRegistry) handleServiceStream(svc *Service) func(network.Stream)
 func (r *ServiceRegistry) DialService(ctx context.Context, peerID peer.ID, protocolID string) (ServiceConn, error) {
 	pid := protocol.ID(protocolID)
 
-	log.Printf("📤 Connecting to peer %s service %s...", peerID.String()[:16]+"...", protocolID)
+	slog.Info("dialing service", "peer", peerID.String()[:16]+"...", "protocol", protocolID)
 
 	// Open stream to remote peer
 	s, err := r.host.NewStream(ctx, peerID, pid)
@@ -164,7 +131,7 @@ func (r *ServiceRegistry) DialService(ctx context.Context, peerID peer.ID, proto
 	}
 
 	tag := connectionTag(s)
-	log.Printf("✅ %s Connected to peer %s service %s", tag, peerID.String()[:16]+"...", protocolID)
+	slog.Info("connected to peer", "path", tag, "peer", peerID.String()[:16]+"...", "protocol", protocolID)
 
 	return &serviceStream{stream: s}, nil
 }

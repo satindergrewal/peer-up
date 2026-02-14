@@ -1,8 +1,6 @@
 package auth
 
 import (
-	"io"
-	"log"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -11,7 +9,7 @@ import (
 
 func BenchmarkInterceptSecuredAllowed(b *testing.B) {
 	allowed := genPeerID(b)
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true}, log.New(io.Discard, "", 0))
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{allowed: true})
 	cm := testConnMultiaddrs()
 
 	b.ResetTimer()
@@ -22,7 +20,7 @@ func BenchmarkInterceptSecuredAllowed(b *testing.B) {
 
 func BenchmarkInterceptSecuredDenied(b *testing.B) {
 	denied := genPeerID(b)
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{}, log.New(io.Discard, "", 0))
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	cm := testConnMultiaddrs()
 
 	b.ResetTimer()
@@ -33,7 +31,7 @@ func BenchmarkInterceptSecuredDenied(b *testing.B) {
 
 func BenchmarkIsAuthorized(b *testing.B) {
 	p := genPeerID(b)
-	g := NewAuthorizedPeerGater(map[peer.ID]bool{p: true}, nil)
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{p: true})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

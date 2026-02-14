@@ -55,7 +55,7 @@ func (r *NameResolver) Resolve(name string) (peer.ID, error) {
 	// Try to parse as direct peer ID
 	peerID, err := peer.Decode(name)
 	if err != nil {
-		return "", fmt.Errorf("name not found and not a valid peer ID: %s", name)
+		return "", fmt.Errorf("%w: %s", ErrNameNotFound, name)
 	}
 
 	return peerID, nil
