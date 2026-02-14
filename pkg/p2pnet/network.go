@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
@@ -18,6 +19,37 @@ import (
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 )
+
+// holePunchTracer logs DCUtR hole-punching events.
+type holePunchTracer struct{}
+
+func (t *holePunchTracer) Trace(evt *holepunch.Event) {
+	short := evt.Remote.String()
+	if len(short) > 16 {
+		short = short[:16] + "..."
+	}
+
+	switch e := evt.Evt.(type) {
+	case *holepunch.StartHolePunchEvt:
+		log.Printf("🕳️  Hole punch STARTED with %s (%d addrs, RTT %s)",
+			short, len(e.RemoteAddrs), e.RTT)
+	case *holepunch.EndHolePunchEvt:
+		if e.Success {
+			log.Printf("🕳️  Hole punch SUCCEEDED with %s (took %s)",
+				short, e.EllapsedTime)
+		} else {
+			log.Printf("🕳️  Hole punch FAILED with %s (took %s): %s",
+				short, e.EllapsedTime, e.Error)
+		}
+	case *holepunch.DirectDialEvt:
+		if e.Success {
+			log.Printf("🕳️  Direct dial SUCCEEDED to %s (took %s)",
+				short, e.EllapsedTime)
+		} else {
+			log.Printf("🕳️  Direct dial FAILED to %s: %s", short, e.Error)
+		}
+	}
+}
 
 // Network represents a P2P network instance
 type Network struct {
@@ -89,7 +121,7 @@ func New(cfg *Config) (*Network, error) {
 		}
 
 		if cfg.EnableHolePunching {
-			hostOpts = append(hostOpts, libp2p.EnableHolePunching())
+			hostOpts = append(hostOpts, libp2p.EnableHolePunching(holepunch.WithTracer(&holePunchTracer{})))
 		}
 
 		if cfg.ForcePrivate {
