@@ -36,7 +36,7 @@ peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for 
 | **Admin UI** | CLI only | Web dashboard, admin console |
 | **Exit nodes** | Not yet | Yes |
 | **Subnet routing** | Not yet | Yes |
-| **Multi-user/team** | Manual peer ID exchange (invite flow planned) | Built-in team management, SSO |
+| **Multi-user/team** | Invite/join flow + `peerup auth` CLI | Built-in team management, SSO |
 
 ### Where peer-up wins
 
@@ -110,7 +110,7 @@ peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for 
 
 | Project | Stack | Layer | Relay fallback | CGNAT works | Onboarding | Self-sovereign |
 |---------|-------|-------|---------------|-------------|------------|----------------|
-| **peer-up** | Go + libp2p | TCP service proxy | Yes (circuit relay v2) | Yes | `init` wizard + invite (planned) | Yes |
+| **peer-up** | Go + libp2p | TCP service proxy | Yes (circuit relay v2) | Yes | `init` wizard + invite/join | Yes |
 | **Hyprspace** | Go + libp2p | IP layer (TUN) | Yes (circuit relay) | Yes | Manual config | Yes |
 | **connet** | Go + QUIC | TCP proxy | Yes (control server) | Partial | Manual config | Yes |
 | **tunnel** | Bash + HTTP | TCP/UDP proxy | Yes (HTTP relay) | Yes | CLI flags | Yes |
@@ -256,4 +256,4 @@ For Starlink CGNAT with a self-hosted relay, Circuit Relay v2 is **functionally 
 
 ---
 
-**Last Updated**: 2026-02-13
+**Last Updated**: 2026-02-14
