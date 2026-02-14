@@ -401,8 +401,11 @@ go test -race -v ./internal/auth/
 | `internal/auth` | `gater_test.go` | ConnectionGater: inbound/outbound filtering, peer authorization, hot-reload |
 | `internal/auth` | `authorized_keys_test.go` | File loading, comment handling, invalid peer IDs, missing files |
 | `internal/auth` | `manage_test.go` | AddPeer (with duplicate/sanitize), RemovePeer (atomic write, preserves comments), ListPeers |
+| `internal/identity` | `identity_test.go` | Key creation, persistence, file permissions, PeerIDFromKeyFile |
+| `internal/validate` | `service_test.go` | Service name validation (valid/invalid cases, max length) |
 | `internal/invite` | `code_test.go` | Encode/decode round-trip, invalid codes, trailing junk rejection |
 | `cmd/peerup` | `relay_input_test.go` | Relay address parsing (IPv4, IPv6, multiaddr detection, port validation) |
+| `pkg/p2pnet` | `integration_test.go` | In-process libp2p host-to-host streaming, half-close semantics, P2P-to-TCP proxy, DialWithRetry retry/backoff |
 
 ---
 

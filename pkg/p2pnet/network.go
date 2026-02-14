@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -151,13 +152,20 @@ func (n *Network) ExposeService(name, localAddress string) error {
 	})
 }
 
-// ConnectToService connects to a remote peer's service
+// ConnectToService connects to a remote peer's service with a default 30s timeout.
 func (n *Network) ConnectToService(peerID peer.ID, serviceName string) (ServiceConn, error) {
+	ctx, cancel := context.WithTimeout(n.ctx, 30*time.Second)
+	defer cancel()
+	return n.ConnectToServiceContext(ctx, peerID, serviceName)
+}
+
+// ConnectToServiceContext connects to a remote peer's service using the provided context.
+func (n *Network) ConnectToServiceContext(ctx context.Context, peerID peer.ID, serviceName string) (ServiceConn, error) {
 	if err := ValidateServiceName(serviceName); err != nil {
 		return nil, err
 	}
 	protocol := fmt.Sprintf("/peerup/%s/1.0.0", serviceName)
-	return n.serviceRegistry.DialService(n.ctx, peerID, protocol)
+	return n.serviceRegistry.DialService(ctx, peerID, protocol)
 }
 
 // ResolveName resolves a name to a peer ID

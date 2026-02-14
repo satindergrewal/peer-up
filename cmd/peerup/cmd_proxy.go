@@ -1,13 +1,21 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
+
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/satindergrewal/peer-up/internal/config"
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
@@ -32,6 +40,9 @@ func runProxy(args []string) {
 	target := remaining[0]
 	serviceName := remaining[1]
 	localPort := remaining[2]
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Find and load config
 	cfgFile, err := config.FindConfigFile(*configFlag)
@@ -77,6 +88,8 @@ func runProxy(args []string) {
 		log.Fatalf("Cannot resolve target %q: %v", target, err)
 	}
 
+	h := p2pNetwork.Host()
+
 	fmt.Printf("Client Peer ID: %s\n", p2pNetwork.PeerID())
 	fmt.Printf("Target Peer: %s\n", homePeerID)
 	if target != homePeerID.String() {
@@ -85,17 +98,82 @@ func runProxy(args []string) {
 	fmt.Println()
 
 	// Add relay circuit addresses for the home peer
-	fmt.Println("Connecting to target peer...")
+	fmt.Println("Connecting to target peer via relay...")
 	if err := p2pNetwork.AddRelayAddressesForPeer(cfg.Relay.Addresses, homePeerID); err != nil {
 		log.Fatalf("Failed to add relay addresses: %v", err)
 	}
+
+	// Bootstrap DHT for direct connection discovery (DCUtR hole-punching).
+	// This runs in the background — if it finds the target peer's direct
+	// addresses, libp2p will prefer them over the relay circuit.
+	fmt.Println("Bootstrapping DHT for direct connection discovery...")
+	kdht, err := dht.New(ctx, h, dht.Mode(dht.ModeClient))
+	if err != nil {
+		log.Printf("DHT init failed (relay-only mode): %v", err)
+	} else {
+		if err := kdht.Bootstrap(ctx); err != nil {
+			log.Printf("DHT bootstrap failed (relay-only mode): %v", err)
+		} else {
+			// Connect to bootstrap peers in background
+			var bootstrapPeers []ma.Multiaddr
+			if len(cfg.Discovery.BootstrapPeers) > 0 {
+				for _, addr := range cfg.Discovery.BootstrapPeers {
+					maddr, err := ma.NewMultiaddr(addr)
+					if err != nil {
+						continue
+					}
+					bootstrapPeers = append(bootstrapPeers, maddr)
+				}
+			} else {
+				bootstrapPeers = dht.DefaultBootstrapPeers
+			}
+
+			var wg sync.WaitGroup
+			var connected atomic.Int32
+			for _, pAddr := range bootstrapPeers {
+				pi, err := peer.AddrInfoFromP2pAddr(pAddr)
+				if err != nil {
+					continue
+				}
+				wg.Add(1)
+				go func(pi peer.AddrInfo) {
+					defer wg.Done()
+					connectCtx, connectCancel := context.WithTimeout(ctx, 10*time.Second)
+					defer connectCancel()
+					if err := h.Connect(connectCtx, pi); err == nil {
+						connected.Add(1)
+					}
+				}(*pi)
+			}
+			wg.Wait()
+			fmt.Printf("Connected to %d bootstrap peers\n", connected.Load())
+
+			// Try to find target peer's addresses via DHT (async — doesn't block proxy startup)
+			go func() {
+				findCtx, findCancel := context.WithTimeout(ctx, 30*time.Second)
+				defer findCancel()
+				pi, err := kdht.FindPeer(findCtx, homePeerID)
+				if err != nil {
+					log.Printf("DHT peer discovery: target not found (using relay)")
+					return
+				}
+				log.Printf("DHT found target peer with %d addresses — direct connection possible", len(pi.Addrs))
+				// Add discovered addresses to peerstore so libp2p can try direct connection
+				h.Peerstore().AddAddrs(pi.ID, pi.Addrs, time.Hour)
+			}()
+		}
+	}
 	fmt.Println()
 
-	// Create TCP listener using library helper
+	// Create TCP listener with retry-enabled dial function.
+	// Each incoming TCP connection triggers a P2P stream dial with
+	// exponential backoff (3 retries: 1s, 2s, 4s) to handle transient
+	// relay disconnections without failing the user's connection.
 	localAddr := fmt.Sprintf("localhost:%s", localPort)
-	listener, err := p2pnet.NewTCPListener(localAddr, func() (p2pnet.ServiceConn, error) {
+	dialFunc := p2pnet.DialWithRetry(func() (p2pnet.ServiceConn, error) {
 		return p2pNetwork.ConnectToService(homePeerID, serviceName)
-	})
+	}, 3)
+	listener, err := p2pnet.NewTCPListener(localAddr, dialFunc)
 	if err != nil {
 		log.Fatalf("Failed to create listener: %v", err)
 	}
@@ -116,6 +194,7 @@ func runProxy(args []string) {
 		<-sigCh
 		fmt.Println("\nShutting down...")
 		close(shutdownCh)
+		cancel()         // stop DHT and background goroutines
 		listener.Close() // causes Serve() to return
 	}()
 

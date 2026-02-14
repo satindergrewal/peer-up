@@ -191,12 +191,22 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 
 ### Phase 4C: Core Hardening & Security
 
-**Timeline**: 3-4 weeks
-**Status**: 📋 Planned
+**Timeline**: 6-8 weeks (batched)
+**Status**: 🔧 In Progress
 
 **Goal**: Harden every component for production reliability. Fix critical security gaps, add self-healing resilience, implement test coverage, and make the system recover from failures automatically — before wider distribution puts binaries in more hands.
 
 **Rationale**: The relay is a public-facing VPS with no resource limits. There are near-zero tests. Connections don't survive relay restarts. A bad config change on the relay can lock you out permanently. These are unacceptable for a mission-critical system that people depend on for remote access. Industry practice for hardened infrastructure (Juniper, Cisco, Kubernetes, systemd) demands: validated configs, automatic recovery, resource isolation, and health monitoring.
+
+**Implementation Order** (batched for incremental value):
+| Batch | Focus | Key Items |
+|-------|-------|-----------|
+| A | **Reliability** | Reconnection with backoff, TCP dial timeout, DHT in proxy, integration tests |
+| B | **Code Quality** | Proxy dedup, structured logging (`log/slog`), sentinel errors, build version embedding |
+| C | **Self-Healing** | Config validation/archive/rollback, commit-confirmed, systemd watchdog |
+| D | **libp2p Features** | AutoNAT v2, smart dialing, QUIC preferred, version in Identify |
+| E | **New Capabilities** | Daemon mode, headless onboarding, `peerup status`, health endpoint |
+| F | **Observability** | OpenTelemetry, metrics, audit logging, trace IDs |
 
 **Deliverables**:
 
@@ -223,24 +233,29 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] **Config validation command** — `peerup validate` / `relay-server validate` — parse config, check key file exists, verify relay address reachable, dry-run before applying. Catches errors before they cause downtime.
 - [ ] **Config archive** — automatically save last 5 configs to `~/.config/peerup/config.d/` with timestamps on every change (init, join, relay add/remove, auth add/remove). Enables rollback.
 - [ ] **Config rollback** — `peerup config rollback [N]` / `relay-server config rollback [N]` — restore Nth previous config from archive. Critical for recovering from bad changes.
-- [ ] **Commit-confirmed pattern** (Juniper JunOS / Cisco IOS) — `relay-server apply --confirm-timeout 120` applies a config change and auto-reverts to previous config if not confirmed within N seconds. **Prevents permanent lockout on remote relay.** No P2P networking tool implements this.
+- [ ] **Commit-confirmed pattern** (Juniper JunOS / Cisco IOS) — `relay-server apply --confirm-timeout 120` applies a config change and auto-reverts to previous config if not confirmed within N seconds. **Prevents permanent lockout on remote relay.** No P2P networking tool implements this. Also serves as the safety net for auto-upgrade (see Phase 4E).
 - [ ] **systemd watchdog integration** — relay-server sends `sd_notify("WATCHDOG=1")` every 30s with internal health check (relay service alive, listening, at least 1 protocol registered). If health check fails, stop notifying → systemd auto-restarts. Add `WatchdogSec=60` to service file.
 - [ ] **Health check HTTP endpoint** — relay exposes `/healthz` on a configurable port (default: disabled). Returns JSON: peer ID, uptime, connected peers count, reservation count, memory usage. Used by monitoring (Prometheus, UptimeKuma) and `setup.sh --check`.
 - [ ] **`peerup status` command** — show connection state: relay connected/disconnected, peer online status, connection type (relay/direct), latency, uptime. Replaces guessing with observability.
+
+**Auto-Upgrade Groundwork** (full implementation in Phase 4E):
+- [ ] **Build version embedding** — compile with `-ldflags "-X main.version=..."` so every binary knows its version. `peerup --version` and `relay-server --version` print build version, commit hash, and build date.
+- [ ] **Version in libp2p Identify** — set `UserAgent` to `peerup/<version>` in libp2p host config. Peers learn each other's versions automatically on connect (no new protocol needed).
+- [ ] **Protocol versioning policy** — document compatibility guarantees: wire protocols (`/peerup/proxy/1.0.0`) are backwards-compatible within major version. Breaking changes increment major version. Old versions supported for 1 release cycle.
 
 **Automation & Integration**:
 - [ ] **Daemon mode** — `peerup daemon` runs in background, exposes Unix socket API (`~/.config/peerup/peerup.sock`) for programmatic control. Enables scripting, automation, and third-party integration without spawning CLI subprocesses. JSON-based request/response. Operations: status, list-peers, list-services, connect, expose, authorize.
 - [ ] **Headless onboarding** — `peerup join --non-interactive` reads invite code from stdin or `PEERUP_INVITE_CODE` env var, writes config, exits. No TTY prompts, no QR rendering. Essential for containerized and automated deployments (Docker, systemd, scripts).
 
 **Reliability**:
-- [ ] Reconnection with exponential backoff — recover from relay drops automatically (1s → 2s → 4s → ... → 60s cap)
+- [x] Reconnection with exponential backoff — `DialWithRetry()` wraps proxy dial with 3 retries (1s → 2s → 4s) to recover from transient relay drops
 - [ ] Connection warmup — pre-establish connection to target peer at `peerup proxy` startup (eliminates 5-15s per-session setup latency)
 - [ ] Stream pooling — reuse streams instead of creating fresh ones per TCP connection (eliminates per-connection protocol negotiation)
 - [ ] Persistent relay reservation — keep reservation alive with periodic refresh instead of re-reserving per connection. Reduces connection setup toward 1-3s (matching Iroh's performance).
-- [ ] DHT bootstrap in proxy command — enable DCUtR hole-punching (currently proxy always relays). With hole punch success (~70%), many connections bypass relay entirely.
+- [x] DHT bootstrap in proxy command — Kademlia DHT (client mode) bootstrapped at proxy startup. Async `FindPeer()` discovers target's direct addresses, enabling DCUtR hole-punching (~70% bypass relay entirely).
 - [x] Graceful shutdown — replace `os.Exit(0)` with proper cleanup, context cancellation stops background goroutines
 - [x] Goroutine lifecycle — use `time.Ticker` + `select ctx.Done()` instead of bare `time.Sleep` loops
-- [ ] TCP dial timeout — `net.DialTimeout(5s)` for local service connections
+- [x] TCP dial timeout — `net.DialTimeout("tcp", addr, 10s)` for local service connections (serve side and proxy side). `ConnectToService()` uses 30s context timeout for P2P stream dial.
 - [x] Fix data race in bootstrap peer counter (`atomic.Int32`)
 
 **Observability**:
@@ -264,6 +279,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] Config version field — `version: 1` in all configs; loader defaults missing version to 1, rejects future versions. Enables safe schema migration.
 - [x] Unit tests for config package — loader, validation, path resolution, version handling, relay config
 - [x] Unit tests for auth package — gater (inbound/outbound/update), authorized_keys (load/parse/comments), manage (add/remove/list/duplicate/sanitize)
+- [x] Integration tests — in-process libp2p hosts verify real stream connectivity, half-close semantics, P2P-to-TCP proxy, and `DialWithRetry` behavior (6 tests in `pkg/p2pnet/integration_test.go`)
 
 **Code Quality**:
 - [ ] Expand test coverage — naming, proxy, invite edge cases, relay input parsing
@@ -418,12 +434,34 @@ Waiting for transfers...
 **Distribution**:
 - [ ] Set up [GoReleaser](https://goreleaser.com/) config (`.goreleaser.yaml`)
 - [ ] GitHub Actions workflow: on tag push, build binaries for Linux/macOS/Windows (amd64 + arm64)
-- [ ] Publish to GitHub Releases with checksums
+- [ ] Publish to GitHub Releases with Ed25519-signed checksums (release key in repo)
 - [ ] Homebrew tap: `brew install satindergrewal/tap/peerup`
 - [ ] One-line install script: `curl -sSL https://get.peerup.dev | sh`
 - [ ] APT repository for Debian/Ubuntu
 - [ ] AUR package for Arch Linux
 - [ ] Docker image + `docker-compose.yml` for containerized deployment
+
+**Embedded / Router Builds** (OpenWRT, Ubiquiti, GL.iNet, MikroTik):
+- [ ] GoReleaser build profiles: `default` (servers/desktops, `-ldflags="-s -w"`, ~25MB) and `embedded` (routers, + UPX compression, ~8MB)
+- [ ] Cross-compilation targets: `linux/mipsle` (OpenWRT), `linux/arm/v7` (Ubiquiti EdgeRouter, Banana Pi), `linux/arm64` (modern routers)
+- [ ] Optional build tag `//go:build !webrtc` to exclude WebRTC/pion (~2MB savings) for router builds
+- [ ] OpenWRT `.ipk` package generation for opkg install
+- [ ] Guide: *"Running peer-up on your router"* — OpenWRT, Ubiquiti EdgeRouter, GL.iNet travel routers
+- [ ] Binary size budget: default ≤25MB stripped, embedded ≤10MB compressed. Current: 34MB full → 25MB stripped → ~8MB UPX.
+
+**Auto-Upgrade** (builds on commit-confirmed pattern from Phase 4C):
+- [ ] `peerup upgrade --check` — query GitHub Releases API for latest version, compare with running version, show changelog
+- [ ] `peerup upgrade` — download binary, verify Ed25519 signature against release key, replace binary, restart. Manual confirmation required.
+- [ ] `peerup upgrade --auto` — automatic upgrade via systemd timer or cron. Downloads, verifies, applies with commit-confirmed safety:
+  1. Rename current binary to `peerup.rollback`
+  2. Install new binary, start with `--confirm-timeout 120`
+  3. New binary runs health check (relay reachable? peers connectable?)
+  4. If healthy → auto-confirm, delete rollback
+  5. If unhealthy or no confirmation → systemd watchdog restarts with rollback binary
+  6. **Impossible to brick a remote node** — same pattern Juniper has used for 20+ years
+- [ ] `relay-server upgrade --auto` — same pattern for relay VPS. Especially critical since relay is remote.
+- [ ] Version mismatch warning — when `peerup status` shows peers running different versions, warn with upgrade instructions
+- [ ] Relay version announcement — relay broadcasts its version to connected peers via libp2p Identify `UserAgent`. Peers see "relay running v1.2.0, you have v1.1.0, run `peerup upgrade`"
 
 **Use-Case Guides & Launch Content**:
 - [ ] Guide: GPU inference — *"Access your home GPU from anywhere through Starlink CGNAT"*
@@ -827,6 +865,10 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 - Resource Manager replaces `WithInfiniteLimits()` — per-peer connection/bandwidth caps enforced
 - Connection setup latency reduced from 5-15s toward 1-3s (persistent reservation + warmup)
 - QUIC transport used by default (3 RTTs vs 4 for TCP)
+- `peerup --version` shows build version, commit hash, and build date
+- Peers exchange version info via libp2p Identify UserAgent — `peerup status` shows peer versions
+- Protocol versioning policy documented (backwards-compatible within major version)
+- Integration tests verify real libp2p host-to-host connectivity in `go test`
 
 **Phase 4D Success**:
 - Third-party code can implement custom `Resolver`, `Authorizer`, and stream middleware
@@ -842,11 +884,16 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 - `peerup invite --headless` outputs JSON; `peerup join --from-env` reads env vars
 
 **Phase 4E Success**:
-- GoReleaser builds binaries for 6 targets (linux/mac/windows × amd64/arm64)
+- GoReleaser builds binaries for 9+ targets (linux/mac/windows × amd64/arm64 + linux/mipsle + linux/arm/v7)
+- Embedded builds ≤10MB (UPX compressed), default builds ≤25MB (stripped)
 - Homebrew tap works: `brew install satindergrewal/tap/peerup`
 - Docker image available
 - Install-to-running in under 30 seconds
+- `peerup upgrade` downloads, verifies signature, and replaces binary safely
+- `peerup upgrade --auto` with commit-confirmed rollback — impossible to brick remote nodes
+- Relay announces version to peers; version mismatch triggers upgrade warning
 - GPU inference use-case guide published
+- Router deployment guide published (OpenWRT, Ubiquiti, GL.iNet)
 - Blog post / demo published
 - Scripting & automation guide published
 - Containerized deployment guide published with working Docker compose examples
@@ -878,4 +925,4 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 **Last Updated**: 2026-02-15
 **Current Phase**: 4C In Progress (module consolidation complete; pre-refactoring foundation: CI, tests, config versioning complete)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Core Hardening & Security — continue with libp2p upgrade, auth hot-reload, self-healing, daemon mode, reconnection
+**Next Milestone**: Phase 4C Batch A (Reliability) — reconnection with backoff, TCP dial timeout, DHT in proxy, integration tests
