@@ -206,7 +206,8 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 | C | **Self-Healing** | Config validation/archive/rollback, commit-confirmed, systemd watchdog |
 | D | **libp2p Features** | AutoNAT v2, smart dialing, QUIC preferred, version in Identify | ✅ DONE |
 | E | **New Capabilities** | `peerup status`, `/healthz` endpoint, headless invite/join, UserAgent fix | ✅ DONE |
-| F | **Observability** | OpenTelemetry, metrics, audit logging, trace IDs |
+| F | **Daemon Mode** | `peerup daemon`, Unix socket API, JSON control protocol, programmatic access | **Next** |
+| G | **Observability** | OpenTelemetry, metrics, audit logging, trace IDs |
 
 **Deliverables**:
 
@@ -245,7 +246,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] **Protocol versioning policy** — document compatibility guarantees: wire protocols (`/peerup/proxy/1.0.0`) are backwards-compatible within major version. Breaking changes increment major version. Old versions supported for 1 release cycle.
 
 **Automation & Integration**:
-- [ ] **Daemon mode** — `peerup daemon` runs in background, exposes Unix socket API (`~/.config/peerup/peerup.sock`) for programmatic control. Enables scripting, automation, and third-party integration without spawning CLI subprocesses. JSON-based request/response. Operations: status, list-peers, list-services, connect, expose, authorize. *(Deferred to its own batch)*
+- [ ] **Daemon mode** — `peerup daemon` runs in background, exposes Unix socket API (`~/.config/peerup/peerup.sock`) for programmatic control. Enables scripting, automation, and third-party integration without spawning CLI subprocesses. JSON-based request/response. Operations: status, list-peers, list-services, connect, expose, authorize. *(Batch F)*
 - [x] **Headless onboarding** — `peerup invite --non-interactive` skips QR, prints bare code to stdout, progress to stderr. `peerup join --non-interactive` reads invite code from CLI arg, `PEERUP_INVITE_CODE` env var, or stdin. No TTY prompts. Essential for containerized and automated deployments (Docker, systemd, scripts). *(Batch E)*
 
 **Reliability**:
@@ -1029,4 +1030,4 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 **Last Updated**: 2026-02-16
 **Current Phase**: 4C In Progress (Batch A ✅; Batch B ✅; Batch C ✅; Batch D ✅; Batch E ✅)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Phase 4C Batch F (Observability) — OpenTelemetry, metrics, audit logging, trace IDs
+**Next Milestone**: Phase 4C Batch F (Daemon Mode) — `peerup daemon`, Unix socket API, JSON control protocol, programmatic access
