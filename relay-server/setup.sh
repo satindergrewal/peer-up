@@ -959,7 +959,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+WatchdogSec=90
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${RELAY_DIR}
