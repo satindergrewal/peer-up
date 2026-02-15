@@ -34,6 +34,7 @@ peer-up/
 │   │   ├── cmd_config.go    # Config validate/show/rollback/apply/confirm
 │   │   ├── cmd_invite.go    # Generate invite code + QR + P2P handshake
 │   │   ├── cmd_join.go      # Decode invite, connect, auto-configure
+│   │   ├── config_template.go # Shared node config YAML template (single source of truth)
 │   │   └── relay_input.go   # Flexible relay address parsing (IP, IP:PORT, multiaddr)
 │   └── relay-server/        # Circuit relay v2 source (builds relay binary)
 │       └── main.go
