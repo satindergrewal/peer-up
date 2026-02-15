@@ -25,6 +25,10 @@ func runService(args []string) {
 		runServiceList(args[1:])
 	case "remove":
 		runServiceRemove(args[1:])
+	case "enable":
+		runServiceSetEnabled(args[1:], true)
+	case "disable":
+		runServiceSetEnabled(args[1:], false)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown service command: %s\n\n", args[0])
 		printServiceUsage()
@@ -36,15 +40,19 @@ func printServiceUsage() {
 	fmt.Println("Usage: peerup service <command> [options]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  add    <name> <address>   Expose a local service (enabled by default)")
+	fmt.Println("  add     <name> <address>  Expose a local service (enabled by default)")
 	fmt.Println("  list                      List configured services")
-	fmt.Println("  remove <name>             Remove a service")
+	fmt.Println("  remove  <name>            Remove a service")
+	fmt.Println("  enable  <name>            Enable a service")
+	fmt.Println("  disable <name>            Disable a service")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  peerup service add ssh localhost:22")
 	fmt.Println("  peerup service add ollama localhost:11434")
 	fmt.Println("  peerup service add web localhost:8080 --protocol my-web")
 	fmt.Println("  peerup service list")
+	fmt.Println("  peerup service disable web")
+	fmt.Println("  peerup service enable web")
 	fmt.Println("  peerup service remove web")
 	fmt.Println()
 	fmt.Println("All commands support --config <path>.")
@@ -194,6 +202,118 @@ func runServiceList(args []string) {
 		fmt.Printf("  %-12s -> %-20s (%s)%s\n", name, svc.LocalAddress, state, proto)
 	}
 	fmt.Printf("\nConfig: %s\n", cfgFile)
+}
+
+func runServiceSetEnabled(args []string, enabled bool) {
+	args = reorderFlagsFirst(args)
+
+	fs := flag.NewFlagSet("service enable/disable", flag.ExitOnError)
+	configFlag := fs.String("config", "", "path to config file")
+	fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		if enabled {
+			fmt.Println("Usage: peerup service enable <name>")
+		} else {
+			fmt.Println("Usage: peerup service disable <name>")
+		}
+		os.Exit(1)
+	}
+
+	name := fs.Arg(0)
+	cfgFile, cfg := resolveConfigFile(*configFlag)
+
+	// Check it exists
+	if cfg.Services == nil {
+		log.Fatalf("Service not found: %s", name)
+	}
+	svc, exists := cfg.Services[name]
+	if !exists {
+		log.Fatalf("Service not found: %s", name)
+	}
+
+	// Already in desired state?
+	if svc.Enabled == enabled {
+		state := "enabled"
+		if !enabled {
+			state = "disabled"
+		}
+		termcolor.Yellow("Service %s is already %s", name, state)
+		return
+	}
+
+	// Read config and flip the enabled field
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		log.Fatalf("Failed to read config: %v", err)
+	}
+
+	oldVal := "enabled: true"
+	newVal := "enabled: false"
+	if enabled {
+		oldVal = "enabled: false"
+		newVal = "enabled: true"
+	}
+
+	// Find the service block and replace its enabled line
+	lines := strings.Split(string(data), "\n")
+	var result []string
+	inServices := false
+	inTarget := false
+	replaced := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "services:" {
+			inServices = true
+			result = append(result, line)
+			continue
+		}
+
+		if inServices && !inTarget && !replaced {
+			// Look for target service name at 2-space indent
+			if trimmed == name+":" && strings.HasPrefix(line, "  ") {
+				inTarget = true
+				result = append(result, line)
+				continue
+			}
+		}
+
+		if inTarget && !replaced {
+			if trimmed == oldVal && strings.HasPrefix(line, "    ") {
+				// Replace the enabled line, preserving indentation
+				indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+				result = append(result, indent+newVal)
+				replaced = true
+				inTarget = false
+				continue
+			}
+			// If we hit a line that's not a child (not 4+ space indent), stop looking
+			if trimmed != "" && !strings.HasPrefix(line, "    ") {
+				inTarget = false
+			}
+		}
+
+		result = append(result, line)
+	}
+
+	if !replaced {
+		log.Fatalf("Could not find enabled field for service %q.\nPlease edit manually: %s", name, cfgFile)
+	}
+
+	if err := os.WriteFile(cfgFile, []byte(strings.Join(result, "\n")), 0600); err != nil {
+		log.Fatalf("Failed to write config: %v", err)
+	}
+
+	if enabled {
+		termcolor.Green("Enabled service: %s", name)
+	} else {
+		termcolor.Yellow("Disabled service: %s", name)
+	}
+	fmt.Printf("Config: %s\n", cfgFile)
+	fmt.Println()
+	fmt.Println("Restart 'peerup serve' to apply.")
 }
 
 func runServiceRemove(args []string) {
