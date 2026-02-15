@@ -100,17 +100,21 @@ The wizard will:
 
 ### Configure services
 
-Edit `~/.config/peerup/config.yaml` on the home server:
+Add services via CLI (preferred) or by editing the config file:
+
+```bash
+# Add via CLI
+./peerup service add ssh localhost:22
+./peerup service add xrdp localhost:3389
+
+# Or edit ~/.config/peerup/config.yaml directly
+```
+
+Ensure `force_private_reachability` is set for CGNAT:
 
 ```yaml
 network:
   force_private_reachability: true  # CRITICAL for CGNAT (Starlink, etc.)
-
-# Enable SSH service
-services:
-  ssh:
-    enabled: true
-    local_address: "localhost:22"
 ```
 
 ### Start the server
