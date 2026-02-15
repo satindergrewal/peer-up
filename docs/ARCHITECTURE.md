@@ -14,7 +14,7 @@ This document describes the technical architecture of peer-up, from current impl
 
 ---
 
-## Current Architecture (Phase 4C Batch D Complete)
+## Current Architecture (Phase 4C Batch E Complete)
 
 ### Component Overview
 
@@ -23,7 +23,7 @@ peer-up/
 ├── cmd/
 │   ├── peerup/              # Single binary with subcommands
 │   │   ├── main.go          # Command dispatch (init, serve, proxy, ping, whoami,
-│   │   │                    #   auth, relay, config, invite, join)
+│   │   │                    #   auth, relay, config, invite, join, status)
 │   │   ├── cmd_init.go      # Interactive setup wizard
 │   │   ├── cmd_serve.go     # Server mode (expose services, watchdog, config archive)
 │   │   ├── cmd_proxy.go     # TCP proxy client
@@ -32,8 +32,9 @@ peer-up/
 │   │   ├── cmd_auth.go      # Auth add/list/remove/validate subcommands
 │   │   ├── cmd_relay.go     # Relay add/list/remove subcommands
 │   │   ├── cmd_config.go    # Config validate/show/rollback/apply/confirm
-│   │   ├── cmd_invite.go    # Generate invite code + QR + P2P handshake
-│   │   ├── cmd_join.go      # Decode invite, connect, auto-configure
+│   │   ├── cmd_invite.go    # Generate invite code + QR + P2P handshake (--non-interactive)
+│   │   ├── cmd_join.go      # Decode invite, connect, auto-configure (--non-interactive, env var)
+│   │   ├── cmd_status.go    # Local status: version, peer ID, config, services, peers
 │   │   ├── config_template.go # Shared node config YAML template (single source of truth)
 │   │   └── relay_input.go   # Flexible relay address parsing (IP, IP:PORT, multiaddr)
 │   └── relay-server/        # Circuit relay v2 source (builds relay binary)
@@ -414,6 +415,18 @@ Both `serve` and `relay-server` run a watchdog goroutine (`internal/watchdog`) t
 On success, sends `WATCHDOG=1` to systemd via the `NOTIFY_SOCKET` unix datagram socket (pure Go, no CGo). On non-systemd systems (macOS), all sd_notify calls are no-ops. `READY=1` is sent after startup completes; `STOPPING=1` on shutdown.
 
 The systemd service uses `Type=notify` and `WatchdogSec=90` (3x the 30s check interval) so systemd will restart the process if health checks stop succeeding.
+
+### Health Check HTTP Endpoint (`/healthz`)
+
+The relay server optionally exposes a `/healthz` HTTP endpoint for external monitoring (Prometheus, UptimeKuma, etc.). Disabled by default in config:
+
+```yaml
+health:
+  enabled: true
+  listen_address: "127.0.0.1:9090"
+```
+
+The endpoint returns JSON with: `status`, `peer_id`, `version`, `uptime_seconds`, `connected_peers`, `protocols`. Bound to localhost by default — not exposed to the internet. The HTTP server starts after the relay service is up and shuts down gracefully on SIGTERM.
 
 ### Commit-Confirmed Enforcement
 
@@ -913,4 +926,4 @@ Validated at three points:
 ---
 
 **Last Updated**: 2026-02-16
-**Architecture Version**: 2.5 (libp2p Features — AutoNAT v2, QUIC-preferred, Identify UserAgent)
+**Architecture Version**: 2.6 (New Capabilities — peerup status, /healthz, headless invite/join)

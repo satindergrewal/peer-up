@@ -47,6 +47,8 @@ func main() {
 		runInvite(os.Args[2:])
 	case "join":
 		runJoin(os.Args[2:])
+	case "status":
+		runStatus(os.Args[2:])
 	case "version", "--version":
 		printVersion()
 	default:
@@ -85,9 +87,10 @@ func printUsage() {
 	fmt.Println("  config apply <new> [--confirm-timeout]   Apply config with auto-revert safety")
 	fmt.Println("  config confirm  [--config path]          Confirm applied config")
 	fmt.Println()
-	fmt.Println("  invite [--name \"home\"]                   Generate an invite code for pairing")
-	fmt.Println("  join <code> [--name \"laptop\"]            Accept an invite and auto-configure")
+	fmt.Println("  invite [--name \"home\"] [--non-interactive] Generate an invite code for pairing")
+	fmt.Println("  join <code> [--name \"laptop\"] [--non-interactive] Accept an invite and auto-configure")
 	fmt.Println()
+	fmt.Println("  status [--config path]                  Show local config, peers, and services")
 	fmt.Println("  version                                 Show version information")
 	fmt.Println()
 	fmt.Println("The <target> can be a peer ID or a name from the names section of your config.")

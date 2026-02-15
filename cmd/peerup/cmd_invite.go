@@ -31,7 +31,16 @@ func runInvite(args []string) {
 	configFlag := fs.String("config", "", "path to config file")
 	nameFlag := fs.String("name", "", "friendly name for this peer (e.g., \"home\")")
 	ttlFlag := fs.Duration("ttl", 10*time.Minute, "invite code expiry duration")
+	nonInteractive := fs.Bool("non-interactive", false, "machine-friendly output (no QR, bare code to stdout)")
 	fs.Parse(args)
+
+	// In non-interactive mode, progress goes to stderr so stdout has only the invite code.
+	out := fmt.Printf
+	outln := fmt.Println
+	if *nonInteractive {
+		out = func(format string, a ...any) (int, error) { return fmt.Fprintf(os.Stderr, format, a...) }
+		outln = func(a ...any) (int, error) { return fmt.Fprintln(os.Stderr, a...) }
+	}
 
 	// Load config
 	cfgFile, err := config.FindConfigFile(*configFlag)
@@ -58,6 +67,7 @@ func runInvite(args []string) {
 	p2pNetwork, err := p2pnet.New(&p2pnet.Config{
 		KeyFile:            cfg.Identity.KeyFile,
 		Config:             &config.Config{Network: cfg.Network},
+		UserAgent:          "peerup/" + version,
 		EnableRelay:        true,
 		RelayAddrs:         cfg.Relay.Addresses,
 		ForcePrivate:       cfg.Network.ForcePrivateReachability,
@@ -85,7 +95,7 @@ func runInvite(args []string) {
 	}
 
 	// Wait for relay address
-	fmt.Println("Waiting for relay reservation...")
+	outln("Waiting for relay reservation...")
 	select {
 	case <-ctx.Done():
 		return
@@ -103,23 +113,28 @@ func runInvite(args []string) {
 		log.Fatalf("Failed to encode invite: %v", err)
 	}
 
-	fmt.Println()
-	fmt.Printf("=== Invite Code (expires in %s) ===\n", *ttlFlag)
-	fmt.Println()
-	fmt.Println(code)
-	fmt.Println()
-
-	// Show QR code for easy scanning (e.g., from mobile app)
-	q, err := qr.New(code, qr.Medium)
-	if err == nil {
-		fmt.Println("Scan this QR code to join:")
+	if *nonInteractive {
+		// Bare code to stdout for piping/scripting
+		fmt.Println(code)
+	} else {
 		fmt.Println()
-		fmt.Print(q.ToSmallString(false))
-	}
+		fmt.Printf("=== Invite Code (expires in %s) ===\n", *ttlFlag)
+		fmt.Println()
+		fmt.Println(code)
+		fmt.Println()
 
-	fmt.Println("Or on that device, run:  peerup join <code>")
-	fmt.Println()
-	fmt.Println("Waiting for peer to join...")
+		// Show QR code for easy scanning (e.g., from mobile app)
+		q, err := qr.New(code, qr.Medium)
+		if err == nil {
+			fmt.Println("Scan this QR code to join:")
+			fmt.Println()
+			fmt.Print(q.ToSmallString(false))
+		}
+
+		fmt.Println("Or on that device, run:  peerup join <code>")
+	}
+	outln()
+	outln("Waiting for peer to join...")
 
 	// Set up invite protocol handler
 	joined := make(chan string, 1) // receives joiner's name
@@ -189,17 +204,17 @@ func runInvite(args []string) {
 	select {
 	case name := <-joined:
 		timer.Stop()
-		fmt.Println()
+		outln()
 		if name != "" {
-			fmt.Printf("Peer \"%s\" joined and authorized!\n", name)
+			out("Peer \"%s\" joined and authorized!\n", name)
 		} else {
-			fmt.Println("Peer joined and authorized!")
+			outln("Peer joined and authorized!")
 		}
-		fmt.Printf("Authorized keys file: %s\n", cfg.Security.AuthorizedKeysFile)
+		out("Authorized keys file: %s\n", cfg.Security.AuthorizedKeysFile)
 	case <-timer.C:
-		fmt.Println()
-		fmt.Println("Invite expired. No peer joined.")
+		outln()
+		outln("Invite expired. No peer joined.")
 	case <-sigCh:
-		fmt.Println("\nCancelled.")
+		outln("\nCancelled.")
 	}
 }

@@ -57,3 +57,10 @@ security:
 #   reservation_ttl: "1h"        # How long a reservation lasts
 #   session_duration: "10m"      # Max duration per relayed session
 #   session_data_limit: "64MB"   # Max data per session per direction
+
+# Health check endpoint for monitoring (Prometheus, UptimeKuma, etc.)
+# Disabled by default. Binds to localhost only — not exposed to the internet.
+# To expose externally, use a reverse proxy or change listen_address.
+# health:
+#   enabled: true
+#   listen_address: "127.0.0.1:9090"

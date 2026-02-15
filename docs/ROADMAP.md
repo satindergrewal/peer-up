@@ -205,7 +205,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 | B | **Code Quality** | Proxy dedup, structured logging (`log/slog`), sentinel errors, build version embedding |
 | C | **Self-Healing** | Config validation/archive/rollback, commit-confirmed, systemd watchdog |
 | D | **libp2p Features** | AutoNAT v2, smart dialing, QUIC preferred, version in Identify | ✅ DONE |
-| E | **New Capabilities** | Daemon mode, headless onboarding, `peerup status`, health endpoint |
+| E | **New Capabilities** | `peerup status`, `/healthz` endpoint, headless invite/join, UserAgent fix | ✅ DONE |
 | F | **Observability** | OpenTelemetry, metrics, audit logging, trace IDs |
 
 **Deliverables**:
@@ -236,17 +236,17 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] **Config rollback** — `peerup config rollback [N]` / `relay-server config rollback [N]` — restore Nth previous config from archive. Critical for recovering from bad changes.
 - [ ] **Commit-confirmed pattern** (Juniper JunOS / Cisco IOS) — `relay-server apply --confirm-timeout 120` applies a config change and auto-reverts to previous config if not confirmed within N seconds. **Prevents permanent lockout on remote relay.** No P2P networking tool implements this. Also serves as the safety net for auto-upgrade (see Phase 4E).
 - [ ] **systemd watchdog integration** — relay-server sends `sd_notify("WATCHDOG=1")` every 30s with internal health check (relay service alive, listening, at least 1 protocol registered). If health check fails, stop notifying → systemd auto-restarts. Add `WatchdogSec=60` to service file.
-- [ ] **Health check HTTP endpoint** — relay exposes `/healthz` on a configurable port (default: disabled). Returns JSON: peer ID, uptime, connected peers count, reservation count, memory usage. Used by monitoring (Prometheus, UptimeKuma) and `setup.sh --check`.
-- [ ] **`peerup status` command** — show connection state: relay connected/disconnected, peer online status, connection type (relay/direct), latency, uptime. Replaces guessing with observability.
+- [x] **Health check HTTP endpoint** — relay exposes `/healthz` on a configurable port (default: disabled, `127.0.0.1:9090`). Returns JSON: peer ID, version, uptime, connected peers count, protocol count. Used by monitoring (Prometheus, UptimeKuma). *(Batch E)*
+- [x] **`peerup status` command** — show local config at a glance: version, peer ID, config path, relay addresses, authorized peers, services, names. No network required — instant. *(Batch E)*
 
 **Auto-Upgrade Groundwork** (full implementation in Phase 4E):
 - [x] **Build version embedding** — compile with `-ldflags "-X main.version=..."` so every binary knows its version. `peerup version` / `peerup --version` and `relay-server version` / `relay-server --version` print build version, commit hash, build date, and Go version. Version printed in relay-server startup banner. `setup.sh` injects version from git at build time.
-- [ ] **Version in libp2p Identify** — set `UserAgent` to `peerup/<version>` in libp2p host config. Peers learn each other's versions automatically on connect (no new protocol needed).
+- [x] **Version in libp2p Identify** — set `UserAgent` to `peerup/<version>` in libp2p host config. Peers learn each other's versions automatically on connect (no new protocol needed). *(Batch D — serve/proxy/ping; Batch E — invite/join)*
 - [ ] **Protocol versioning policy** — document compatibility guarantees: wire protocols (`/peerup/proxy/1.0.0`) are backwards-compatible within major version. Breaking changes increment major version. Old versions supported for 1 release cycle.
 
 **Automation & Integration**:
-- [ ] **Daemon mode** — `peerup daemon` runs in background, exposes Unix socket API (`~/.config/peerup/peerup.sock`) for programmatic control. Enables scripting, automation, and third-party integration without spawning CLI subprocesses. JSON-based request/response. Operations: status, list-peers, list-services, connect, expose, authorize.
-- [ ] **Headless onboarding** — `peerup join --non-interactive` reads invite code from stdin or `PEERUP_INVITE_CODE` env var, writes config, exits. No TTY prompts, no QR rendering. Essential for containerized and automated deployments (Docker, systemd, scripts).
+- [ ] **Daemon mode** — `peerup daemon` runs in background, exposes Unix socket API (`~/.config/peerup/peerup.sock`) for programmatic control. Enables scripting, automation, and third-party integration without spawning CLI subprocesses. JSON-based request/response. Operations: status, list-peers, list-services, connect, expose, authorize. *(Deferred to its own batch)*
+- [x] **Headless onboarding** — `peerup invite --non-interactive` skips QR, prints bare code to stdout, progress to stderr. `peerup join --non-interactive` reads invite code from CLI arg, `PEERUP_INVITE_CODE` env var, or stdin. No TTY prompts. Essential for containerized and automated deployments (Docker, systemd, scripts). *(Batch E)*
 
 **Reliability**:
 - [x] Reconnection with exponential backoff — `DialWithRetry()` wraps proxy dial with 3 retries (1s → 2s → 4s) to recover from transient relay drops
@@ -294,6 +294,13 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] Sentinel errors — 8 sentinel errors across 4 packages, all using `%w` wrapping for `errors.Is()`
 - [x] Build version embedding — `peerup version`, `relay-server version`, ldflags injection in setup.sh
 - [x] Structured logging with `log/slog` — library code migrated (~20 call sites), CLI output unchanged
+
+**Batch E — New Capabilities** (completed):
+- [x] `peerup status` — local-only info command (version, peer ID, config, relays, authorized peers, services, names)
+- [x] `/healthz` HTTP endpoint on relay-server — JSON health check for monitoring (disabled by default, binds `127.0.0.1:9090`)
+- [x] `peerup invite --non-interactive` — bare invite code to stdout, progress to stderr, skip QR
+- [x] `peerup join --non-interactive` — reads code from CLI arg, `PEERUP_INVITE_CODE` env var, or stdin
+- [x] UserAgent fix — added `peerup/<version>` UserAgent to invite/join hosts (was missing from Batch D)
 
 **Code Quality**:
 - [ ] Expand test coverage — naming, proxy, invite edge cases, relay input parsing
@@ -380,9 +387,9 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] Example: connect to a remote service in <10 lines of Python
 
 **Headless Onboarding Enhancements**:
-- [ ] `peerup invite --headless` — outputs invite data as JSON (no QR, no interactive wait)
-- [ ] `peerup join --from-env` — reads config from environment variables
-- [ ] Docker-friendly: `PEERUP_INVITE_CODE=xxx peerup join --non-interactive --name node-1`
+- [x] `peerup invite --non-interactive` — bare code to stdout, no QR, progress to stderr *(Phase 4C Batch E)*
+- [x] `peerup join --non-interactive` — reads code from CLI arg, `PEERUP_INVITE_CODE` env var, or stdin *(Phase 4C Batch E)*
+- [x] Docker-friendly: `PEERUP_INVITE_CODE=xxx peerup join --non-interactive --name node-1` *(Phase 4C Batch E)*
 
 **SDK Documentation** (the plugins above ARE the examples):
 - [ ] `docs/SDK.md` — guide for building on `pkg/p2pnet`
@@ -1010,7 +1017,7 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 
 ---
 
-**Last Updated**: 2026-02-15
-**Current Phase**: 4C In Progress (Batch A: Reliability ✅; Batch B: Code Quality ✅; Batch C: Self-Healing ✅)
+**Last Updated**: 2026-02-16
+**Current Phase**: 4C In Progress (Batch A ✅; Batch B ✅; Batch C ✅; Batch D ✅; Batch E ✅)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Phase 4C Batch D (libp2p Features) — AutoNAT v2, smart dialing, QUIC preferred, version in Identify
+**Next Milestone**: Phase 4C Batch F (Observability) — OpenTelemetry, metrics, audit logging, trace IDs

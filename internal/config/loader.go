@@ -143,6 +143,11 @@ func LoadRelayServerConfig(path string) (*RelayServerConfig, error) {
 	// Apply defaults for zero-valued resource fields
 	applyRelayResourceDefaults(&config.Resources)
 
+	// Apply health endpoint defaults
+	if config.Health.Enabled && config.Health.ListenAddress == "" {
+		config.Health.ListenAddress = "127.0.0.1:9090"
+	}
+
 	return &config, nil
 }
 

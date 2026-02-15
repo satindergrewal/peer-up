@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -561,6 +563,36 @@ func main() {
 		},
 	})
 
+	// Start /healthz HTTP endpoint if enabled
+	var healthServer *http.Server
+	if cfg.Health.Enabled {
+		startTime := time.Now()
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"status":          "ok",
+				"peer_id":         h.ID().String(),
+				"version":         version,
+				"uptime_seconds":  int(time.Since(startTime).Seconds()),
+				"connected_peers": len(h.Network().Peers()),
+				"protocols":       len(h.Mux().Protocols()),
+			})
+		})
+		healthServer = &http.Server{
+			Addr:         cfg.Health.ListenAddress,
+			Handler:      mux,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		}
+		go func() {
+			slog.Info("health endpoint started", "addr", cfg.Health.ListenAddress)
+			if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("health endpoint error", "err", err)
+			}
+		}()
+	}
+
 	fmt.Println()
 	fmt.Println("✅ Private relay running.")
 	fmt.Println("Press Ctrl+C to stop.")
@@ -570,5 +602,10 @@ func main() {
 	<-ch
 	watchdog.Stopping()
 	fmt.Println("\nShutting down...")
+	if healthServer != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		healthServer.Shutdown(shutdownCtx)
+		shutdownCancel()
+	}
 	cancel() // Stop background goroutines
 }
