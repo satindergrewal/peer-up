@@ -586,10 +586,29 @@ Both `peerup serve` and `relay-server` send `sd_notify` signals to systemd: `REA
 | Server shows no `/p2p-circuit` addresses | Check `force_private_reachability: true` and relay address |
 | `protocols not supported` | Relay service not running |
 | XRDP window manager crashes | Ensure no conflicting physical desktop session for the same user |
-| `failed to sufficiently increase receive buffer size` | Warning only: `sudo sysctl -w net.core.rmem_max=7500000` |
+| `failed to sufficiently increase receive buffer size` | QUIC works but with smaller buffers. Fix: see UDP buffer tuning below |
 | Bad config edit broke startup | `peerup config rollback` restores last-known-good config |
 | Need to test config changes on remote node | Use `peerup config apply new.yaml --confirm-timeout 5m`, then `peerup config confirm` |
 | `commit-confirmed timeout` in logs | Config auto-reverted because `peerup config confirm` wasn't run in time |
+
+### UDP Buffer Tuning (QUIC)
+
+The `failed to sufficiently increase receive buffer size` message means the kernel's UDP buffer cap is too low for optimal QUIC performance. QUIC still works, just with smaller buffers. The relay server's `setup.sh` handles this automatically, but home nodes need it applied manually.
+
+**Temporary** (until reboot):
+```bash
+sudo sysctl -w net.core.rmem_max=7500000
+sudo sysctl -w net.core.wmem_max=7500000
+```
+
+**Persistent** (survives reboot):
+```bash
+echo "net.core.rmem_max=7500000" | sudo tee -a /etc/sysctl.d/99-quic.conf
+echo "net.core.wmem_max=7500000" | sudo tee -a /etc/sysctl.d/99-quic.conf
+sudo sysctl --system
+```
+
+Restart `peerup serve` after applying — the message will be gone.
 
 ## Bandwidth Considerations
 
