@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/satindergrewal/peer-up/internal/config"
+	"github.com/satindergrewal/peer-up/internal/termcolor"
 )
 
 func runRelay(args []string) {
@@ -116,7 +116,7 @@ func runRelayAdd(args []string) {
 
 	for _, addr := range resolvedAddrs {
 		if existing[addr] {
-			color.Yellow("Already configured: %s", truncateAddr(addr))
+			termcolor.Yellow("Already configured: %s", truncateAddr(addr))
 			continue
 		}
 		toAdd = append(toAdd, addr)
@@ -178,7 +178,7 @@ func runRelayAdd(args []string) {
 	}
 
 	for _, addr := range toAdd {
-		color.Green("Added relay: %s", truncateAddr(addr))
+		termcolor.Green("Added relay: %s", truncateAddr(addr))
 	}
 	fmt.Printf("Config: %s\n", cfgFile)
 }
@@ -264,7 +264,7 @@ func runRelayRemove(args []string) {
 		log.Fatalf("Failed to write config: %v", err)
 	}
 
-	color.Green("Removed relay: %s", truncateAddr(target))
+	termcolor.Green("Removed relay: %s", truncateAddr(target))
 	fmt.Printf("Config: %s\n", cfgFile)
 }
 
