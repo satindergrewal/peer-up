@@ -23,7 +23,7 @@ peer-up/
 ├── cmd/
 │   ├── peerup/              # Single binary with subcommands
 │   │   ├── main.go          # Command dispatch (init, serve, proxy, ping, whoami,
-│   │   │                    #   auth, relay, config, invite, join, status)
+│   │   │                    #   auth, relay, config, service, invite, join, status)
 │   │   ├── cmd_init.go      # Interactive setup wizard
 │   │   ├── cmd_serve.go     # Server mode (expose services, watchdog, config archive)
 │   │   ├── cmd_proxy.go     # TCP proxy client
@@ -31,6 +31,7 @@ peer-up/
 │   │   ├── cmd_whoami.go    # Show own peer ID
 │   │   ├── cmd_auth.go      # Auth add/list/remove/validate subcommands
 │   │   ├── cmd_relay.go     # Relay add/list/remove subcommands
+│   │   ├── cmd_service.go   # Service add/list/remove subcommands
 │   │   ├── cmd_config.go    # Config validate/show/rollback/apply/confirm
 │   │   ├── cmd_invite.go    # Generate invite code + QR + P2P handshake (--non-interactive)
 │   │   ├── cmd_join.go      # Decode invite, connect, auto-configure (--non-interactive, env var)
@@ -205,7 +206,7 @@ Building on the current structure, future phases will add:
 peer-up/
 ├── cmd/
 │   ├── peerup/              # ✅ Single binary (init, serve, proxy, ping, whoami,
-│   │                        #   auth, relay, invite, join)
+│   │                        #   auth, relay, service, invite, join, status)
 │   ├── relay-server/        # ✅ Circuit relay v2 source
 │   └── gateway/             # 🆕 Phase 4F: Multi-mode daemon (SOCKS, DNS, TUN)
 │
@@ -841,10 +842,11 @@ The validation logic lives in `internal/validate/validate.go` (`validate.Service
 - Must start and end with alphanumeric character
 - Regex: `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
 
-Validated at three points:
-1. `ValidateNodeConfig()` — rejects bad names in config before startup
-2. `ExposeService()` — rejects bad names at service registration time
-3. `ConnectToService()` — rejects bad names at connection time
+Validated at four points:
+1. `peerup service add` — rejects bad names at CLI entry
+2. `ValidateNodeConfig()` — rejects bad names in config before startup
+3. `ExposeService()` — rejects bad names at service registration time
+4. `ConnectToService()` — rejects bad names at connection time
 
 ---
 
@@ -926,4 +928,4 @@ Validated at three points:
 ---
 
 **Last Updated**: 2026-02-16
-**Architecture Version**: 2.6 (New Capabilities — peerup status, /healthz, headless invite/join)
+**Architecture Version**: 2.7 (Service CLI — peerup service add/remove/list)

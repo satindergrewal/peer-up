@@ -47,6 +47,8 @@ func main() {
 		runInvite(os.Args[2:])
 	case "join":
 		runJoin(os.Args[2:])
+	case "service":
+		runService(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
 	case "version", "--version":
@@ -86,6 +88,10 @@ func printUsage() {
 	fmt.Println("  config rollback [--config path]          Restore last-known-good config")
 	fmt.Println("  config apply <new> [--confirm-timeout]   Apply config with auto-revert safety")
 	fmt.Println("  config confirm  [--config path]          Confirm applied config")
+	fmt.Println()
+	fmt.Println("  service add <name> <address>             Expose a local service")
+	fmt.Println("  service remove <name>                    Remove a service")
+	fmt.Println("  service list                             List configured services")
 	fmt.Println()
 	fmt.Println("  invite [--name \"home\"] [--non-interactive] Generate an invite code for pairing")
 	fmt.Println("  join <code> [--name \"laptop\"] [--non-interactive] Accept an invite and auto-configure")
