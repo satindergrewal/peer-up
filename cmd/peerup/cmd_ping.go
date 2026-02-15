@@ -65,6 +65,7 @@ func runPing(args []string) {
 	p2pNetwork, err := p2pnet.New(&p2pnet.Config{
 		KeyFile:            cfg.Identity.KeyFile,
 		Config:             &config.Config{Network: cfg.Network},
+		UserAgent:          "peerup/" + version,
 		EnableRelay:        true,
 		RelayAddrs:         cfg.Relay.Addresses,
 		ForcePrivate:       cfg.Network.ForcePrivateReachability,

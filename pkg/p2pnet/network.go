@@ -76,6 +76,7 @@ type Config struct {
 	KeyFile         string
 	AuthorizedKeys  string
 	Config          *config.Config
+	UserAgent       string            // libp2p Identify user agent (e.g. "peerup/0.1.0")
 
 	// Relay configuration (optional)
 	EnableRelay         bool              // Enable relay support (AutoRelay + hole punching)
@@ -100,12 +101,19 @@ func New(cfg *Config) (*Network, error) {
 		return nil, fmt.Errorf("failed to load identity: %w", err)
 	}
 
-	// Create libp2p host options
+	// Create libp2p host options.
+	// Transport order: QUIC first (3 RTTs, native multiplexing, better hole-punching),
+	// TCP second (4 RTTs, universal fallback), WebSocket last (anti-censorship/DPI evasion).
 	hostOpts := []libp2p.Option{
 		libp2p.Identity(priv),
-		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(ws.New),
+		libp2p.EnableAutoNATv2(),
+	}
+
+	if cfg.UserAgent != "" {
+		hostOpts = append(hostOpts, libp2p.UserAgent(cfg.UserAgent))
 	}
 
 	// Add listen addresses if configured

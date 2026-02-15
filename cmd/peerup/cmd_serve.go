@@ -92,6 +92,7 @@ func runServe(args []string) {
 		KeyFile:            cfg.Identity.KeyFile,
 		AuthorizedKeys:     authorizedKeysFile,
 		Config:             &config.Config{Network: cfg.Network},
+		UserAgent:          "peerup/" + version,
 		EnableRelay:        true,
 		RelayAddrs:         cfg.Relay.Addresses,
 		ForcePrivate:       cfg.Network.ForcePrivateReachability,

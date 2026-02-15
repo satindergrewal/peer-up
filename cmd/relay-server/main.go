@@ -18,6 +18,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
@@ -468,10 +471,17 @@ func main() {
 	}
 	fmt.Println()
 
-	// Build host options
+	// Build host options.
+	// Transport order: QUIC first (3 RTTs, native multiplexing), TCP second (universal fallback),
+	// WebSocket last (anti-censorship/DPI evasion). AutoNAT v2 for per-address reachability testing.
 	hostOpts := []libp2p.Option{
 		libp2p.Identity(priv),
 		libp2p.ListenAddrStrings(cfg.Network.ListenAddresses...),
+		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(ws.New),
+		libp2p.EnableAutoNATv2(),
+		libp2p.UserAgent(fmt.Sprintf("relay-server/%s", version)),
 	}
 
 	// Add connection gater if enabled
@@ -479,7 +489,7 @@ func main() {
 		hostOpts = append(hostOpts, libp2p.ConnectionGater(gater))
 	}
 
-	// Create a basic host first — no relay options
+	// Create host — relay service is added separately below
 	h, err := libp2p.New(hostOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create host: %v", err)

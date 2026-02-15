@@ -286,6 +286,62 @@ func TestTCPListenerWithLocalService(t *testing.T) {
 	}
 }
 
+func TestUserAgentExchange(t *testing.T) {
+	// Create two hosts with distinct UserAgent strings.
+	// libp2p's Identify protocol exchanges UserAgent on connect.
+	serverUA := "peerup/1.2.3"
+	clientUA := "peerup/4.5.6"
+
+	server, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
+		libp2p.DisableRelay(),
+		libp2p.UserAgent(serverUA),
+	)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+	t.Cleanup(func() { server.Close() })
+
+	client, err := libp2p.New(
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
+		libp2p.DisableRelay(),
+		libp2p.UserAgent(clientUA),
+	)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+	t.Cleanup(func() { client.Close() })
+
+	// Connect client -> server
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = client.Connect(ctx, peer.AddrInfo{ID: server.ID(), Addrs: server.Addrs()})
+	if err != nil {
+		t.Fatalf("connect error: %v", err)
+	}
+
+	// Identify runs asynchronously after connect — wait briefly
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify client sees server's UserAgent
+	serverAgent, err := client.Peerstore().Get(server.ID(), "AgentVersion")
+	if err != nil {
+		t.Fatalf("failed to get server agent from client peerstore: %v", err)
+	}
+	if serverAgent != serverUA {
+		t.Errorf("server UserAgent: got %q, want %q", serverAgent, serverUA)
+	}
+
+	// Verify server sees client's UserAgent
+	clientAgent, err := server.Peerstore().Get(client.ID(), "AgentVersion")
+	if err != nil {
+		t.Fatalf("failed to get client agent from server peerstore: %v", err)
+	}
+	if clientAgent != clientUA {
+		t.Errorf("client UserAgent: got %q, want %q", clientAgent, clientUA)
+	}
+}
+
 // mockServiceConn implements ServiceConn for testing DialWithRetry.
 type mockServiceConn struct{}
 
