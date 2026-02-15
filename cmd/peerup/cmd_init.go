@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	ma "github.com/multiformats/go-multiaddr"
-	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/satindergrewal/peer-up/internal/config"
+	"github.com/satindergrewal/peer-up/internal/qr"
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
 
@@ -131,8 +131,8 @@ func runInit(args []string) {
 	// Show peer ID as QR for easy sharing
 	fmt.Println("Your Peer ID (scan to share):")
 	fmt.Println()
-	if qr, err := qrcode.New(peerID.String(), qrcode.Medium); err == nil {
-		fmt.Print(qr.ToSmallString(false))
+	if q, err := qr.New(peerID.String(), qr.Medium); err == nil {
+		fmt.Print(q.ToSmallString(false))
 	}
 
 	fmt.Println("Next steps:")

@@ -61,6 +61,15 @@ peer-up/
 │   │   └── identity.go      # CheckKeyFilePermissions, LoadOrCreateIdentity, PeerIDFromKeyFile
 │   ├── invite/              # Invite code encoding/decoding
 │   │   └── code.go          # Binary → base32 with dash grouping
+│   ├── qr/                  # QR Code encoder for terminal display (inlined from skip2/go-qrcode)
+│   │   ├── qrcode.go        # Public API: New(), Bitmap(), ToSmallString()
+│   │   ├── encoder.go       # Data encoding (numeric, alphanumeric, byte modes)
+│   │   ├── symbol.go        # Module matrix, pattern placement, penalty scoring
+│   │   ├── version.go       # All 40 QR versions × 4 recovery levels
+│   │   ├── gf.go            # GF(2^8) arithmetic + Reed-Solomon encoding
+│   │   └── bitset.go        # Append-only bit array operations
+│   ├── termcolor/           # Minimal ANSI terminal colors (replaces fatih/color)
+│   │   └── color.go         # Green, Red, Yellow, Faint — respects NO_COLOR
 │   ├── validate/            # Input validation helpers
 │   │   └── validate.go      # ServiceName() — DNS-label format for protocol IDs
 │   └── watchdog/            # Health monitoring + systemd integration

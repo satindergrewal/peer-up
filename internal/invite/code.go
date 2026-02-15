@@ -3,6 +3,7 @@ package invite
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
-	mh "github.com/multiformats/go-multihash"
 )
 
 var encoding = base32.StdEncoding.WithPadding(base32.NoPadding)
@@ -163,19 +163,35 @@ func Decode(code string) (*InviteData, error) {
 }
 
 // strictMultihashLen verifies that buf is exactly one multihash with no
-// trailing bytes. multihash.Decode is lenient about trailing data, so we
-// re-encode from the parsed digest and compare lengths.
+// trailing bytes. A multihash is: <varint-code><varint-length><digest>.
+// We read both varints, then check that code+length+digest consume the
+// entire buffer with nothing left over.
+//
+// This replaces the github.com/multiformats/go-multihash dependency.
+// The multihash wire format is defined at https://multiformats.io/multihash/
+// Original library: MIT License, Copyright (c) 2014 Juan Batiz-Benet.
+// See THIRD_PARTY_NOTICES in the repo root.
 func strictMultihashLen(buf []byte) error {
-	dm, err := mh.Decode(buf)
-	if err != nil {
-		return err
+	if len(buf) < 2 {
+		return fmt.Errorf("multihash too short: %d bytes", len(buf))
 	}
-	canonical, err := mh.Encode(dm.Digest, dm.Code)
-	if err != nil {
-		return err
+
+	// Read the hash function code varint.
+	_, n1 := binary.Uvarint(buf)
+	if n1 <= 0 {
+		return fmt.Errorf("multihash: invalid code varint")
 	}
-	if len(buf) != len(canonical) {
-		return fmt.Errorf("multihash has %d trailing bytes", len(buf)-len(canonical))
+
+	// Read the digest length varint.
+	digestLen, n2 := binary.Uvarint(buf[n1:])
+	if n2 <= 0 {
+		return fmt.Errorf("multihash: invalid length varint")
+	}
+
+	// The total consumed bytes must equal the buffer length exactly.
+	expected := n1 + n2 + int(digestLen)
+	if len(buf) != expected {
+		return fmt.Errorf("multihash has %d trailing bytes", len(buf)-expected)
 	}
 	return nil
 }

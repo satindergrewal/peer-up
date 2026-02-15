@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
+	"github.com/satindergrewal/peer-up/internal/termcolor"
 )
 
 // reorderFlagsFirst moves flag arguments (--foo val) before positional args,
@@ -114,7 +114,7 @@ func runAuthAdd(args []string) {
 		log.Fatalf("Failed to add peer: %v", err)
 	}
 
-	color.Green("Authorized peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
+	termcolor.Green("Authorized peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
 	if *commentFlag != "" {
 		fmt.Printf("  Comment: %s\n", *commentFlag)
 	}
@@ -148,7 +148,7 @@ func runAuthList(args []string) {
 		} else {
 			fmt.Printf("  %d. %s\n", i+1, short)
 		}
-		color.New(color.Faint).Printf("     %s\n", full)
+		termcolor.Faint("     %s\n", full)
 	}
 	fmt.Printf("\nFile: %s\n", authKeysPath)
 }
@@ -171,7 +171,7 @@ func runAuthRemove(args []string) {
 		log.Fatalf("Failed to remove peer: %v", err)
 	}
 
-	color.Green("Revoked peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
+	termcolor.Green("Revoked peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
 	fmt.Printf("  File: %s\n", authKeysPath)
 }
 
@@ -233,14 +233,14 @@ func runAuthValidate(args []string) {
 	}
 
 	if errorCount > 0 {
-		color.Red("Validation failed with %d error(s):", errorCount)
+		termcolor.Red("Validation failed with %d error(s):", errorCount)
 		for _, e := range errors {
 			fmt.Printf("  %s\n", e)
 		}
 		os.Exit(1)
 	}
 
-	color.Green("Validation passed")
+	termcolor.Green("Validation passed")
 	fmt.Printf("  Valid peer IDs: %d\n", validCount)
 	fmt.Printf("  File: %s\n", authKeysPath)
 }
