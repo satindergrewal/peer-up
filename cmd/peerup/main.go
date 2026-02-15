@@ -91,6 +91,8 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("  service add <name> <address>             Expose a local service")
 	fmt.Println("  service remove <name>                    Remove a service")
+	fmt.Println("  service enable <name>                    Enable a service")
+	fmt.Println("  service disable <name>                   Disable a service")
 	fmt.Println("  service list                             List configured services")
 	fmt.Println()
 	fmt.Println("  invite [--name \"home\"] [--non-interactive] Generate an invite code for pairing")
