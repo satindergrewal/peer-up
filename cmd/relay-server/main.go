@@ -305,6 +305,54 @@ func extractTCPPort(listenAddresses []string) string {
 	return "7777"
 }
 
+const relayConfigFile = "relay-server.yaml"
+
+func runRelayConfigValidate() {
+	cfg, err := config.LoadRelayServerConfig(relayConfigFile)
+	if err != nil {
+		fmt.Printf("FAIL: %s\n", err)
+		os.Exit(1)
+	}
+	if err := config.ValidateRelayServerConfig(cfg); err != nil {
+		fmt.Printf("FAIL: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("OK: %s is valid\n", relayConfigFile)
+}
+
+func runRelayConfigRollback() {
+	if !config.HasArchive(relayConfigFile) {
+		fmt.Printf("No last-known-good archive for %s\n", relayConfigFile)
+		fmt.Println("Archives are created automatically on each successful relay-server startup.")
+		os.Exit(1)
+	}
+	if err := config.Rollback(relayConfigFile); err != nil {
+		log.Fatalf("Rollback failed: %v", err)
+	}
+	fmt.Printf("Restored %s from last-known-good archive\n", relayConfigFile)
+	fmt.Println("You can now restart relay-server.")
+}
+
+func runRelayConfig(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: relay-server config <command>")
+		fmt.Println()
+		fmt.Println("Commands:")
+		fmt.Println("  validate    Validate relay-server.yaml without starting")
+		fmt.Println("  rollback    Restore last-known-good config")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "validate":
+		runRelayConfigValidate()
+	case "rollback":
+		runRelayConfigRollback()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config command: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
 func printUsage() {
 	fmt.Println("Usage: relay-server [command]")
 	fmt.Println()
@@ -314,6 +362,8 @@ func printUsage() {
 	fmt.Println("  authorize <peer-id> [comment]       Allow a peer to use this relay")
 	fmt.Println("  deauthorize <peer-id>               Remove a peer's access")
 	fmt.Println("  list-peers                          List authorized peers")
+	fmt.Println("  config validate                     Validate config without starting")
+	fmt.Println("  config rollback                     Restore last-known-good config")
 	fmt.Println("  help                                Show this help message")
 	fmt.Println()
 	fmt.Println("Setup (via bash script):")
@@ -344,6 +394,9 @@ func main() {
 			return
 		case "info":
 			runInfo()
+			return
+		case "config":
+			runRelayConfig(os.Args[2:])
 			return
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
