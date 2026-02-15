@@ -39,6 +39,13 @@ type RelayServerConfig struct {
 	Network   RelayNetworkConfig   `yaml:"network"`
 	Security  RelaySecurityConfig  `yaml:"security"`
 	Resources RelayResourcesConfig `yaml:"resources,omitempty"`
+	Health    HealthConfig         `yaml:"health,omitempty"`
+}
+
+// HealthConfig holds HTTP health check endpoint configuration.
+type HealthConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	ListenAddress string `yaml:"listen_address"`
 }
 
 // IdentityConfig holds identity-related configuration
