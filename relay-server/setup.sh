@@ -951,48 +951,18 @@ echo
 # --- 7. Install systemd service ---
 echo "[8/8] Installing systemd service..."
 
-# Generate service file with correct paths for this machine
-cat > /tmp/relay-server.service <<SERVICEEOF
-[Unit]
-Description=peer-up Relay Server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=notify
-WatchdogSec=90
-User=${SERVICE_USER}
-Group=${SERVICE_USER}
-WorkingDirectory=${RELAY_DIR}
-ExecStart=${RELAY_DIR}/relay-server
-Restart=always
-RestartSec=5
-
-# File descriptor limit for many concurrent connections
-LimitNOFILE=65536
-
-# Allow binding to privileged ports (443) without running as root
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
-RestrictSUIDSGID=true
-ReadWritePaths=${RELAY_DIR}
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=relay-server
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+# Generate service file from the template — single source of truth.
+# The template uses YOUR_USERNAME and /home/YOUR_USERNAME/... placeholders.
+# Order matters: replace full paths first (they contain YOUR_USERNAME),
+# then replace the remaining YOUR_USERNAME in User=/Group= lines.
+TEMPLATE="${RELAY_DIR}/relay-server.service"
+if [ ! -f "$TEMPLATE" ]; then
+    echo "ERROR: service template not found: $TEMPLATE"
+    exit 1
+fi
+sed -e "s|/home/YOUR_USERNAME/peer-up/relay-server|${RELAY_DIR}|g" \
+    -e "s|YOUR_USERNAME|${SERVICE_USER}|g" \
+    "$TEMPLATE" > /tmp/relay-server.service
 
 run_sudo cp /tmp/relay-server.service /etc/systemd/system/relay-server.service
 rm /tmp/relay-server.service
