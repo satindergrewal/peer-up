@@ -14,7 +14,7 @@ This document describes the technical architecture of peer-up, from current impl
 
 ---
 
-## Current Architecture (Phase 4C Batch C Complete)
+## Current Architecture (Phase 4C Batch D Complete)
 
 ### Component Overview
 
@@ -733,6 +733,26 @@ Similar to iOS but with full VPNService API access:
 
 ## Performance Considerations
 
+### Transport Preference
+
+Both `peerup` and `relay-server` register transports in this order:
+
+1. **QUIC** (preferred) — 3 RTTs to establish, native multiplexing, better for hole-punching. libp2p's smart dialing (built into v0.47.0) ranks QUIC addresses higher than TCP.
+2. **TCP** — 4 RTTs, universal fallback for networks that block UDP.
+3. **WebSocket** — Anti-censorship transport that looks like HTTPS to deep packet inspection (DPI). Commented out by default in sample configs.
+
+### AutoNAT v2
+
+Enabled on all hosts. AutoNAT v2 performs per-address reachability testing with nonce-based dial verification. This means the node knows which specific addresses (IPv4, IPv6, QUIC, TCP) are publicly reachable, rather than a single "public or private" determination. Also prevents amplification attacks by requiring the probing peer to prove it controls the claimed address.
+
+### Version in Identify Protocol
+
+All hosts set `libp2p.UserAgent()` so peers can discover each other's software version via the Identify protocol:
+- **peerup nodes**: `peerup/<version>` (e.g., `peerup/0.1.0` or `peerup/dev`)
+- **relay server**: `relay-server/<version>`
+
+The UserAgent is stored in each peer's peerstore under the `AgentVersion` key after the Identify handshake completes (automatically on connect).
+
 ### Connection Optimization
 
 1. **Relay vs Direct**:
@@ -882,7 +902,8 @@ Validated at three points:
 - libp2p v0.47.0 (networking)
 - Kademlia DHT (peer discovery)
 - Noise protocol (encryption)
-- QUIC transport (performance)
+- QUIC transport (preferred — 3 RTTs vs 4 for TCP)
+- AutoNAT v2 (per-address reachability testing)
 
 **Optional**:
 - Ethereum (blockchain naming)
@@ -891,5 +912,5 @@ Validated at three points:
 
 ---
 
-**Last Updated**: 2026-02-15
-**Architecture Version**: 2.4 (Self-Healing + Watchdog)
+**Last Updated**: 2026-02-16
+**Architecture Version**: 2.5 (libp2p Features — AutoNAT v2, QUIC-preferred, Identify UserAgent)

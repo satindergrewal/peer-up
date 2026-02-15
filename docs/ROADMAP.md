@@ -204,7 +204,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 | A | **Reliability** | Reconnection with backoff, TCP dial timeout, DHT in proxy, integration tests |
 | B | **Code Quality** | Proxy dedup, structured logging (`log/slog`), sentinel errors, build version embedding |
 | C | **Self-Healing** | Config validation/archive/rollback, commit-confirmed, systemd watchdog |
-| D | **libp2p Features** | AutoNAT v2, smart dialing, QUIC preferred, version in Identify |
+| D | **libp2p Features** | AutoNAT v2, smart dialing, QUIC preferred, version in Identify | ✅ DONE |
 | E | **New Capabilities** | Daemon mode, headless onboarding, `peerup status`, health endpoint |
 | F | **Observability** | OpenTelemetry, metrics, audit logging, trace IDs |
 
@@ -223,11 +223,12 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] Relay address validation in `peerup init` — parse multiaddr before writing config *(done in Phase 4B)*
 
 **libp2p Upgrade (Critical)**:
-- [ ] Upgrade main module go-libp2p to latest — gains AutoNAT v2, smart dialing, QUIC improvements, Resource Manager, per-IP rate limiting, source address verification
+- [x] Upgrade main module go-libp2p to latest — gains AutoNAT v2, smart dialing, QUIC improvements, Resource Manager, per-IP rate limiting, source address verification *(already on v0.47.0)*
 - [x] Upgrade relay-server go-libp2p to match main module *(v0.38.2 → v0.47.0, done via `go work sync`)*
-- [ ] Enable AutoNAT v2 — per-address reachability testing (know which specific addresses are publicly reachable; distinguish IPv4 vs IPv6 NAT state). Includes nonce-based dial verification and amplification attack prevention.
-- [ ] Enable smart dialing — address ranking, QUIC prioritization, sequential dial with fast failover (reduces connection churn vs old parallel-dial-all approach)
-- [ ] QUIC as preferred transport — 1 fewer RTT on connection setup (3 RTTs vs 4 for TCP), native multiplexing, better for hole punching
+- [x] Enable AutoNAT v2 — per-address reachability testing (know which specific addresses are publicly reachable; distinguish IPv4 vs IPv6 NAT state). Includes nonce-based dial verification and amplification attack prevention. *(Batch D)*
+- [x] Enable smart dialing — address ranking, QUIC prioritization, sequential dial with fast failover (reduces connection churn vs old parallel-dial-all approach) *(built into v0.47.0; transport ordering set QUIC-first)*
+- [x] QUIC as preferred transport — 1 fewer RTT on connection setup (3 RTTs vs 4 for TCP), native multiplexing, better for hole punching *(Batch D — transport order: QUIC → TCP → WebSocket)*
+- [x] Version in Identify — `libp2p.UserAgent("peerup/<version>")` and `libp2p.UserAgent("relay-server/<version>")` set on all hosts. Peers exchange version info via Identify protocol. Integration test verifies exchange. *(Batch D)*
 
 **Self-Healing & Resilience** (inspired by Juniper JunOS, Cisco IOS, Kubernetes, systemd, MikroTik):
 - [ ] **Config validation command** — `peerup validate` / `relay-server validate` — parse config, check key file exists, verify relay address reachable, dry-run before applying. Catches errors before they cause downtime.
