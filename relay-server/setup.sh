@@ -980,8 +980,25 @@ if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COM
             exit 1
         fi
     else
-        echo "  Build failed (Go version is fine). Check the errors above."
-        exit 1
+        echo "  Build failed. Go version go${CURRENT_GO} meets the minimum, but the"
+        echo "  installation at /usr/local/go may be corrupted (e.g. leftover files"
+        echo "  from a previous version extracted over the current one)."
+        echo
+        echo "  Clean reinstall go${CURRENT_GO}? This will remove and re-download /usr/local/go. [y/N] "
+        read -r REPLY
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            # Reinstall the same version the user already has
+            GO_MIN_VERSION="$CURRENT_GO"
+            install_go
+            echo
+            echo "  Retrying build..."
+            go mod tidy
+            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
+            echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+        else
+            echo "  Aborting — cannot continue without a successful build."
+            exit 1
+        fi
     fi
 else
     echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
