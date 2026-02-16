@@ -20,7 +20,7 @@
 #     setup with the service running as that user
 #
 # What the full setup does:
-#   1. Installs Go (if not present)
+#   1. Ensures Go meets minimum version from go.mod (installs/upgrades if needed)
 #   2. Installs qrencode (for QR codes in --check)
 #   3. Tunes network buffers for QUIC
 #   4. Configures journald log rotation
@@ -777,21 +777,45 @@ echo "Running as:      $CURRENT_USER"
 echo "Service user:    $SERVICE_USER"
 echo
 
-# --- 1. Install Go if not present ---
+# --- 1. Ensure Go meets minimum version from go.mod ---
+GO_MIN_VERSION=$(grep '^go ' "$RELAY_DIR/../go.mod" | awk '{print $2}')
+INSTALL_GO=false
+
+# Compare semver: returns 0 (true) if $1 >= $2
+version_ge() {
+    local IFS=.
+    local i a=($1) b=($2)
+    for ((i=0; i<${#b[@]}; i++)); do
+        [[ -z ${a[i]} ]] && a[i]=0
+        if ((10#${a[i]} < 10#${b[i]})); then return 1; fi
+        if ((10#${a[i]} > 10#${b[i]})); then return 0; fi
+    done
+    return 0
+}
+
 if ! command -v go &> /dev/null; then
-    echo "[1/8] Installing Go..."
-    GO_VERSION="1.23.6"
-    wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+    echo "[1/8] Go not found — installing go${GO_MIN_VERSION}..."
+    INSTALL_GO=true
+else
+    CURRENT_GO=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+    if ! version_ge "$CURRENT_GO" "$GO_MIN_VERSION"; then
+        echo "[1/8] Go ${CURRENT_GO} is below minimum go${GO_MIN_VERSION} — upgrading..."
+        INSTALL_GO=true
+    else
+        echo "[1/8] Go already installed: go${CURRENT_GO} (minimum: go${GO_MIN_VERSION})"
+    fi
+fi
+
+if [ "$INSTALL_GO" = true ]; then
+    wget -q "https://go.dev/dl/go${GO_MIN_VERSION}.linux-amd64.tar.gz"
     run_sudo rm -rf /usr/local/go
-    run_sudo tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz"
-    rm "go${GO_VERSION}.linux-amd64.tar.gz"
+    run_sudo tar -C /usr/local -xzf "go${GO_MIN_VERSION}.linux-amd64.tar.gz"
+    rm "go${GO_MIN_VERSION}.linux-amd64.tar.gz"
     export PATH=$PATH:/usr/local/go/bin
     if ! grep -q '/usr/local/go/bin' ~/.bashrc; then
         echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
     fi
     echo "  Go $(go version | awk '{print $3}') installed"
-else
-    echo "[1/8] Go already installed: $(go version | awk '{print $3}')"
 fi
 echo
 
@@ -921,6 +945,7 @@ echo
 echo "[6/8] Building relay-server..."
 PROJECT_ROOT="$(cd "$RELAY_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
+go mod tidy
 BUILD_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
