@@ -111,7 +111,7 @@ func printDaemonUsage() {
 	fmt.Println("  stop             Graceful shutdown")
 	fmt.Println("  ping <peer> [-c N] [--interval 1s] [--json]")
 	fmt.Println("  services [--json]")
-	fmt.Println("  peers [--json]")
+	fmt.Println("  peers [--all] [--json]")
 	fmt.Println("  connect --peer <name> --service <svc> --listen <addr>")
 	fmt.Println("  disconnect <id>")
 }
