@@ -342,6 +342,128 @@ func TestUserAgentExchange(t *testing.T) {
 	}
 }
 
+// --- Ping tests ---
+
+// registerPingHandler sets up the ping-pong stream handler on a host.
+func registerPingHandler(t *testing.T, h host.Host, protoID string) {
+	t.Helper()
+	h.SetStreamHandler(protocol.ID(protoID), func(s network.Stream) {
+		defer s.Close()
+		buf := make([]byte, 64)
+		n, _ := s.Read(buf)
+		msg := strings.TrimSpace(string(buf[:n]))
+		if msg == "ping" {
+			s.Write([]byte("pong\n"))
+		}
+	})
+}
+
+func TestPingPeer_Connected(t *testing.T) {
+	const pingProto = "/peerup/ping/1.0.0"
+
+	server := newTestHost(t)
+	client := newTestHost(t)
+	registerPingHandler(t, server, pingProto)
+	connectHosts(t, server, client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch := p2pnet.PingPeer(ctx, client, server.ID(), pingProto, 3, 100*time.Millisecond)
+
+	var results []p2pnet.PingResult
+	for r := range ch {
+		results = append(results, r)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+
+	stats := p2pnet.ComputePingStats(results)
+	if stats.Received != 3 {
+		t.Errorf("expected 3 received, got %d", stats.Received)
+	}
+	if stats.LossPct != 0 {
+		t.Errorf("expected 0%% loss, got %.0f%%", stats.LossPct)
+	}
+
+	for i, r := range results {
+		if r.Error != "" {
+			t.Errorf("ping %d: unexpected error: %s", i+1, r.Error)
+		}
+		if r.Seq != i+1 {
+			t.Errorf("ping %d: expected seq=%d, got seq=%d", i+1, i+1, r.Seq)
+		}
+		if r.RttMs <= 0 {
+			t.Errorf("ping %d: RTT should be positive, got %.3f", i+1, r.RttMs)
+		}
+		if r.Path != "DIRECT" {
+			t.Errorf("ping %d: expected DIRECT path, got %s", i+1, r.Path)
+		}
+	}
+}
+
+func TestPingPeer_NotConnected_Fails(t *testing.T) {
+	// This test proves the bug: if peers aren't connected and the host
+	// has no addresses for the target, PingPeer fails with "no addresses".
+	// This is the scenario ConnectToPeer was added to fix.
+	const pingProto = "/peerup/ping/1.0.0"
+
+	server := newTestHost(t)
+	client := newTestHost(t)
+	registerPingHandler(t, server, pingProto)
+	// Deliberately NOT connecting hosts
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch := p2pnet.PingPeer(ctx, client, server.ID(), pingProto, 1, time.Second)
+
+	result := <-ch
+	if result.Error == "" {
+		t.Fatal("expected error when pinging unconnected peer, got success")
+	}
+	if !strings.Contains(result.Error, "no addresses") {
+		t.Errorf("expected 'no addresses' error, got: %s", result.Error)
+	}
+}
+
+func TestPingPeer_AddressInPeerstore_AutoConnects(t *testing.T) {
+	// This test proves the fix: if the peer's addresses are in the peerstore
+	// (which ConnectToPeer ensures via DHT/relay), PingPeer succeeds even
+	// without a pre-existing connection — libp2p dials automatically.
+	const pingProto = "/peerup/ping/1.0.0"
+
+	server := newTestHost(t)
+	client := newTestHost(t)
+	registerPingHandler(t, server, pingProto)
+
+	// NOT calling connectHosts — instead, just add server's addresses
+	// to client's peerstore (simulating what ConnectToPeer does)
+	client.Peerstore().AddAddrs(server.ID(), server.Addrs(), time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch := p2pnet.PingPeer(ctx, client, server.ID(), pingProto, 2, 100*time.Millisecond)
+
+	var results []p2pnet.PingResult
+	for r := range ch {
+		results = append(results, r)
+	}
+
+	stats := p2pnet.ComputePingStats(results)
+	if stats.Received != 2 {
+		t.Errorf("expected 2 received, got %d (lost: %d)", stats.Received, stats.Lost)
+	}
+	for i, r := range results {
+		if r.Error != "" {
+			t.Errorf("ping %d: %s", i+1, r.Error)
+		}
+	}
+}
+
 // mockServiceConn implements ServiceConn for testing DialWithRetry.
 type mockServiceConn struct{}
 
