@@ -814,7 +814,7 @@ else
     fi
 fi
 
-if [ "$INSTALL_GO" = true ]; then
+install_go() {
     wget -q "https://go.dev/dl/go${GO_MIN_VERSION}.linux-amd64.tar.gz"
     run_sudo rm -rf /usr/local/go
     run_sudo tar -C /usr/local -xzf "go${GO_MIN_VERSION}.linux-amd64.tar.gz"
@@ -824,6 +824,10 @@ if [ "$INSTALL_GO" = true ]; then
         echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
     fi
     echo "  Go $(go version | awk '{print $3}') installed"
+}
+
+if [ "$INSTALL_GO" = true ]; then
+    install_go
 fi
 echo
 
@@ -957,8 +961,31 @@ go mod tidy
 BUILD_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
-echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server; then
+    echo
+    CURRENT_GO=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+    if ! version_ge "$CURRENT_GO" "$GO_MIN_VERSION"; then
+        echo "  Build failed. Go ${CURRENT_GO} is below the required go${GO_MIN_VERSION}."
+        echo "  Install go${GO_MIN_VERSION} now? This will replace /usr/local/go. [y/N] "
+        read -r REPLY
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            install_go
+            echo
+            echo "  Retrying build..."
+            go mod tidy
+            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
+            echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+        else
+            echo "  Aborting — cannot continue without a successful build."
+            exit 1
+        fi
+    else
+        echo "  Build failed (Go version is fine). Check the errors above."
+        exit 1
+    fi
+else
+    echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+fi
 echo
 
 # --- 6. File permissions ---
