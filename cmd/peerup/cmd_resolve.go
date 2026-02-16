@@ -15,6 +15,8 @@ import (
 )
 
 func runResolve(args []string) {
+	args = reorderArgs(args, map[string]bool{"json": true})
+
 	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
 	configFlag := fs.String("config", "", "path to config file")
 	jsonFlag := fs.Bool("json", false, "output as JSON")

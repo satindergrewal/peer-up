@@ -234,6 +234,8 @@ func runDaemonStop() {
 }
 
 func runDaemonPing(args []string) {
+	args = reorderArgs(args, map[string]bool{"json": true})
+
 	fs := flag.NewFlagSet("daemon ping", flag.ExitOnError)
 	count := fs.Int("c", 4, "number of pings")
 	intervalMs := fs.Int("interval", 1000, "interval between pings (ms)")

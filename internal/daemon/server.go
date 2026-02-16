@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
 
@@ -25,6 +27,7 @@ type RuntimeInfo interface {
 	Version() string
 	StartTime() time.Time
 	PingProtocolID() string
+	ConnectToPeer(ctx context.Context, peerID peer.ID) error // DHT + relay fallback
 }
 
 // GaterReloader allows hot-reloading the authorized peers list.

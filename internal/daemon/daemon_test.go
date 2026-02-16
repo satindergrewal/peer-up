@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
@@ -29,6 +32,7 @@ func (m *mockRuntime) GaterForHotReload() GaterReloader { return nil }
 func (m *mockRuntime) Version() string                 { return m.version }
 func (m *mockRuntime) StartTime() time.Time            { return m.startTime }
 func (m *mockRuntime) PingProtocolID() string          { return m.pingProto }
+func (m *mockRuntime) ConnectToPeer(_ context.Context, _ peer.ID) error { return nil }
 
 func newMockRuntime() *mockRuntime {
 	return &mockRuntime{

@@ -38,6 +38,7 @@ type serveRuntime struct {
 	cancel     context.CancelFunc
 	version    string
 	startTime  time.Time
+	kdht       *dht.IpfsDHT // stored for peer discovery from daemon API
 }
 
 // newServeRuntime creates a new serve runtime: loads config, creates P2P network,
@@ -208,6 +209,7 @@ func (rt *serveRuntime) Bootstrap() error {
 	if err := kdht.Bootstrap(rt.ctx); err != nil {
 		return fmt.Errorf("DHT bootstrap error: %w", err)
 	}
+	rt.kdht = kdht
 
 	// Connect to bootstrap peers
 	var bootstrapPeers []ma.Multiaddr
@@ -393,6 +395,43 @@ func (rt *serveRuntime) StartStatusPrinter() {
 			}
 		}
 	}()
+}
+
+// ConnectToPeer ensures the host can reach the target peer. It checks if
+// already connected, tries DHT discovery, and falls back to relay circuit
+// addresses. This is used by daemon API handlers (ping, traceroute, connect)
+// where the caller needs the peer reachable before opening a stream.
+func (rt *serveRuntime) ConnectToPeer(ctx context.Context, peerID peer.ID) error {
+	h := rt.network.Host()
+
+	// Already connected — nothing to do
+	if h.Network().Connectedness(peerID) == network.Connected {
+		return nil
+	}
+
+	// Try DHT peer lookup
+	if rt.kdht != nil {
+		findCtx, findCancel := context.WithTimeout(ctx, 15*time.Second)
+		pi, err := rt.kdht.FindPeer(findCtx, peerID)
+		findCancel()
+		if err == nil {
+			connectCtx, connectCancel := context.WithTimeout(ctx, 15*time.Second)
+			err = h.Connect(connectCtx, pi)
+			connectCancel()
+			if err == nil {
+				return nil
+			}
+		}
+	}
+
+	// Fallback: add relay circuit addresses and connect through relay
+	if err := rt.network.AddRelayAddressesForPeer(rt.config.Relay.Addresses, peerID); err != nil {
+		return fmt.Errorf("failed to add relay addresses: %w", err)
+	}
+	connectCtx, connectCancel := context.WithTimeout(ctx, 30*time.Second)
+	err := h.Connect(connectCtx, peer.AddrInfo{ID: peerID})
+	connectCancel()
+	return err
 }
 
 // Shutdown cancels the context and closes the P2P network.

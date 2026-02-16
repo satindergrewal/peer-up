@@ -318,6 +318,12 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure the peer is reachable (DHT lookup + relay fallback)
+	if err := s.runtime.ConnectToPeer(r.Context(), targetPeerID); err != nil {
+		respondError(w, http.StatusBadGateway, fmt.Sprintf("cannot reach peer %q: %v", req.Peer, err))
+		return
+	}
+
 	protocolID := s.runtime.PingProtocolID()
 
 	count := req.Count
@@ -373,6 +379,12 @@ func (s *Server) handleTraceroute(w http.ResponseWriter, r *http.Request) {
 	targetPeerID, err := net.ResolveName(req.Peer)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("cannot resolve peer %q: %v", req.Peer, err))
+		return
+	}
+
+	// Ensure the peer is reachable (DHT lookup + relay fallback)
+	if err := s.runtime.ConnectToPeer(r.Context(), targetPeerID); err != nil {
+		respondError(w, http.StatusBadGateway, fmt.Sprintf("cannot reach peer %q: %v", req.Peer, err))
 		return
 	}
 
@@ -467,6 +479,12 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	targetPeerID, err := pnet.ResolveName(req.Peer)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("cannot resolve peer %q: %v", req.Peer, err))
+		return
+	}
+
+	// Ensure the peer is reachable (DHT lookup + relay fallback)
+	if err := s.runtime.ConnectToPeer(r.Context(), targetPeerID); err != nil {
+		respondError(w, http.StatusBadGateway, fmt.Sprintf("cannot reach peer %q: %v", req.Peer, err))
 		return
 	}
 

@@ -17,6 +17,8 @@ import (
 )
 
 func runPing(args []string) {
+	args = reorderArgs(args, map[string]bool{"json": true})
+
 	fs := flag.NewFlagSet("ping", flag.ExitOnError)
 	configFlag := fs.String("config", "", "path to config file")
 	count := fs.Int("c", 0, "number of pings (0 = continuous until Ctrl+C)")
