@@ -92,7 +92,7 @@ This document outlines the multi-phase evolution of peer-up from a simple NAT tr
 - [x] Refactor to `cmd/` layout with single Go module
 - [x] Tested: SSH, XRDP, generic TCP proxy all working across LAN and 5G
 - [x] **UX Streamlining**:
-  - [x] Single binary — merged home-node into `peerup serve`
+  - [x] Single binary — merged home-node into `peerup daemon`
   - [x] Standard config path — auto-discovery (`./peerup.yaml` → `~/.config/peerup/config.yaml` → `/etc/peerup/config.yaml`)
   - [x] `peerup init` — interactive setup wizard (generates config, keys, authorized_keys)
   - [x] All commands support `--config <path>` flag
@@ -247,7 +247,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [ ] **Protocol versioning policy** — document compatibility guarantees: wire protocols (`/peerup/proxy/1.0.0`) are backwards-compatible within major version. Breaking changes increment major version. Old versions supported for 1 release cycle.
 
 **Automation & Integration**:
-- [x] **Daemon mode** — `peerup daemon` runs in foreground (systemd/launchd managed), exposes Unix socket API (`~/.config/peerup/peerup.sock`) with cookie-based auth. JSON + plain text responses. 14 endpoints: status, peers, services, auth (add/remove/hot-reload), ping, traceroute, resolve, connect/disconnect (dynamic proxies), expose/unexpose, shutdown. `peerup serve` is now an alias. CLI client auto-reads cookie. *(Batch F)*
+- [x] **Daemon mode** — `peerup daemon` runs in foreground (systemd/launchd managed), exposes Unix socket API (`~/.config/peerup/peerup.sock`) with cookie-based auth. JSON + plain text responses. 14 endpoints: status, peers, services, auth (add/remove/hot-reload), ping, traceroute, resolve, connect/disconnect (dynamic proxies), expose/unexpose, shutdown. CLI client auto-reads cookie. *(Batch F)*
 - [x] **Headless onboarding** — `peerup invite --non-interactive` skips QR, prints bare code to stdout, progress to stderr. `peerup join --non-interactive` reads invite code from CLI arg, `PEERUP_INVITE_CODE` env var, or stdin. No TTY prompts. Essential for containerized and automated deployments (Docker, systemd, scripts). *(Batch E)*
 
 **Reliability**:
@@ -309,7 +309,6 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] Cookie-based authentication (32-byte random hex, `0600` permissions, rotated per restart)
 - [x] 14 API endpoints with JSON + plain text format negotiation (`?format=text` / `Accept: text/plain`)
 - [x] `serve_common.go` — extracted shared P2P runtime (zero duplication between serve and daemon)
-- [x] `peerup serve` is now an alias for `peerup daemon`
 - [x] Auth hot-reload — `POST /v1/auth` and `DELETE /v1/auth/{peer_id}` take effect immediately
 - [x] Dynamic proxy management — create/destroy TCP proxies at runtime via API
 - [x] P2P ping — standalone (`peerup ping`) + daemon API, continuous/single-shot, stats summary
@@ -407,8 +406,8 @@ Priority areas (by gap severity):
 - [ ] Directory transfer support (`peerup send ./folder --to laptop`)
 
 **Built-in Plugin: Service Templates** (proves `ServiceManager` + health middleware):
-- [ ] `peerup serve --ollama` shortcut (auto-detects Ollama on localhost:11434)
-- [ ] `peerup serve --vllm` shortcut (auto-detects vLLM on localhost:8000)
+- [ ] `peerup daemon --ollama` shortcut (auto-detects Ollama on localhost:11434)
+- [ ] `peerup daemon --vllm` shortcut (auto-detects vLLM on localhost:8000)
 - [ ] Health check middleware — verify local service is reachable before exposing
 - [ ] Streaming response verification (chunked transfer for LLM output)
 
@@ -617,7 +616,7 @@ services:
 ```
 
 ```bash
-# Home: peerup serve
+# Home: peerup daemon
 # Remote: peerup proxy home ollama 11434
 # Then: curl http://localhost:11434/api/generate -d '{"model":"llama3",...}'
 ```
@@ -1004,7 +1003,7 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 - Event hooks fire for peer connect/disconnect and auth decisions
 - New CLI commands require <30 lines of orchestration (bootstrap consolidated)
 - File transfer works between authorized peers (first plugin)
-- `peerup serve --ollama` auto-detects and exposes Ollama (service template plugin)
+- `peerup daemon --ollama` auto-detects and exposes Ollama (service template plugin)
 - `peerup wake <peer>` sends magic packet (WoL plugin)
 - Transfer speed saturates relay bandwidth; resume works after interruption
 - SDK documentation published with working plugin examples

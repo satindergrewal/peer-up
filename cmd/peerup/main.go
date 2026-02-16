@@ -31,8 +31,6 @@ func main() {
 		runInit(os.Args[2:])
 	case "daemon":
 		runDaemon(os.Args[2:])
-	case "serve":
-		runServe(os.Args[2:])
 	case "proxy":
 		runProxy(os.Args[2:])
 	case "ping":
@@ -83,7 +81,6 @@ func printUsage() {
 	fmt.Println("  daemon peers [--all] [--json]            List connected peers via daemon")
 	fmt.Println("  daemon connect --peer <p> --service <s> --listen <addr>")
 	fmt.Println("  daemon disconnect <id>                   Tear down proxy")
-	fmt.Println("  serve                                    Alias for daemon")
 	fmt.Println()
 	fmt.Println("Network tools (standalone, no daemon required):")
 	fmt.Println("  ping <target> [-c N] [--interval 1s] [--json]  P2P ping")

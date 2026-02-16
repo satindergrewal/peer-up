@@ -28,7 +28,7 @@ network:
     - "/ip6/::/udp/0/quic-v1"
 
   # Force libp2p to treat this node as private (behind NAT)
-  # Set to true for "peerup serve" behind CGNAT (e.g., Starlink)
+  # Set to true for "peerup daemon" behind CGNAT (e.g., Starlink)
   # Set to false for clients
   force_private_reachability: false
 
@@ -54,7 +54,7 @@ protocols:
     enabled: true
     id: "/pingpong/1.0.0"
 
-# Services to expose (only used by "peerup serve")
+# Services to expose (only used by "peerup daemon")
 # Uncomment and configure the services you want to share:
 # services:
 #   ssh:

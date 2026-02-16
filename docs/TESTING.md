@@ -7,7 +7,7 @@ This guide walks through testing the complete peer-up system with SSH service ex
 Connect to your home computer's SSH server from a client device (laptop/phone) through the P2P network, traversing CGNAT/NAT using a relay server.
 
 ```
-[Client]  ──peerup proxy──▶  [Relay Server]  ◀──peerup serve──  [Home Server]  ──TCP──▶  [SSH :22]
+[Client]  ──peerup proxy──▶  [Relay Server]  ◀──peerup daemon──  [Home Server]  ──TCP──▶  [SSH :22]
  (Laptop)                       (VPS)                         (Behind CGNAT)
 ```
 
@@ -16,7 +16,7 @@ Connect to your home computer's SSH server from a client device (laptop/phone) t
 ### 1. Three Machines/Terminals
 
 - **Relay Server**: VPS with public IP (Linode, DigitalOcean, AWS, etc.)
-- **Home Server**: Your home computer behind CGNAT/NAT (runs `peerup serve`)
+- **Home Server**: Your home computer behind CGNAT/NAT (runs `peerup daemon`)
 - **Client**: Laptop or another device (runs `peerup proxy`)
 
 ### 2. SSH Server Running
@@ -120,7 +120,7 @@ network:
 ### Start the server
 
 ```bash
-./peerup serve
+./peerup daemon
 ```
 
 **Expected output:**
@@ -243,7 +243,7 @@ services:
     local_address: "localhost:3389"
 ```
 
-Restart `peerup serve`, then on the client:
+Restart `peerup daemon`, then on the client:
 
 ```bash
 ./peerup proxy home xrdp 13389

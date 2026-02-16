@@ -26,8 +26,7 @@ import (
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
 
-// serveRuntime holds the shared P2P lifecycle state used by both
-// the daemon command and the serve alias. Extracted to avoid duplication.
+// serveRuntime holds the shared P2P lifecycle state for the daemon command.
 type serveRuntime struct {
 	network    *p2pnet.Network
 	config     *config.HomeNodeConfig

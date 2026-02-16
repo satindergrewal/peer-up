@@ -173,7 +173,7 @@ func runServiceAdd(args []string) {
 	termcolor.Green("Added service: %s -> %s", name, address)
 	fmt.Printf("Config: %s\n", cfgFile)
 	fmt.Println()
-	fmt.Println("Restart 'peerup serve' to apply.")
+	fmt.Println("Restart 'peerup daemon' to apply.")
 }
 
 func runServiceList(args []string) {
@@ -313,7 +313,7 @@ func runServiceSetEnabled(args []string, enabled bool) {
 	}
 	fmt.Printf("Config: %s\n", cfgFile)
 	fmt.Println()
-	fmt.Println("Restart 'peerup serve' to apply.")
+	fmt.Println("Restart 'peerup daemon' to apply.")
 }
 
 func runServiceRemove(args []string) {
@@ -415,5 +415,5 @@ func runServiceRemove(args []string) {
 	termcolor.Green("Removed service: %s", name)
 	fmt.Printf("Config: %s\n", cfgFile)
 	fmt.Println()
-	fmt.Println("Restart 'peerup serve' to apply.")
+	fmt.Println("Restart 'peerup daemon' to apply.")
 }

@@ -53,7 +53,7 @@ Starlink uses Carrier-Grade NAT (CGNAT) on IPv4, and blocks inbound IPv6 connect
 ```
 
 1. **Relay Server** (VPS) - Circuit relay with optional authentication via `authorized_keys`
-2. **Server** (`peerup serve`) - Exposes local services, accepts only authorized peers
+2. **Server** (`peerup daemon`) - Exposes local services, accepts only authorized peers
 3. **Client** (`peerup proxy`) - Connects to server's services through the relay
 
 ## Quick Start
@@ -145,7 +145,7 @@ services:
 
 **On the server:**
 ```bash
-peerup serve
+peerup daemon
 ```
 
 **On the client:**
@@ -260,10 +260,10 @@ Creates config directory with config.yaml, identity.key, and authorized_keys.
 Default directory: ~/.config/peerup/
 ```
 
-### `peerup serve` - Run as server
+### `peerup daemon` - Run as server
 
 ```
-Usage: peerup serve [--config <path>]
+Usage: peerup daemon [--config <path>]
 
 Starts the server node, exposing configured services.
 Connects to relay, bootstraps DHT, and accepts authorized connections.
@@ -368,7 +368,7 @@ Usage:
   peerup config confirm  [--config path]                                   Confirm applied config
 ```
 
-**Config archive**: On each successful `peerup serve` startup, the validated config is archived as last-known-good. If a bad edit prevents startup, `peerup config rollback` restores it.
+**Config archive**: On each successful `peerup daemon` startup, the validated config is archived as last-known-good. If a bad edit prevents startup, `peerup config rollback` restores it.
 
 **Commit-confirmed** (for safe remote config changes):
 ```bash
@@ -558,7 +558,7 @@ bash setup.sh        # Full setup (build, permissions, systemd, health check)
 bash setup.sh --check  # Health check only
 ```
 
-### peerup serve
+### peerup daemon
 
 Create `/etc/systemd/system/peerup.service`:
 ```ini
@@ -570,7 +570,7 @@ Wants=network-online.target
 [Service]
 Type=notify
 WatchdogSec=90
-ExecStart=/usr/local/bin/peerup serve --config /etc/peerup/config.yaml
+ExecStart=/usr/local/bin/peerup daemon --config /etc/peerup/config.yaml
 Restart=always
 RestartSec=5
 
@@ -578,7 +578,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Both `peerup serve` and `relay-server` send `sd_notify` signals to systemd: `READY=1` after startup, `WATCHDOG=1` every 30s while healthy, `STOPPING=1` on shutdown. On non-systemd systems (macOS), these are no-ops.
+Both `peerup daemon` and `relay-server` send `sd_notify` signals to systemd: `READY=1` after startup, `WATCHDOG=1` every 30s while healthy, `STOPPING=1` on shutdown. On non-systemd systems (macOS), these are no-ops.
 
 ## Troubleshooting
 
@@ -614,7 +614,7 @@ echo "net.core.wmem_max=7500000" | sudo tee -a /etc/sysctl.d/99-quic.conf
 sudo sysctl --system
 ```
 
-Restart `peerup serve` after applying — the message will be gone.
+Restart `peerup daemon` after applying — the message will be gone.
 
 ## Bandwidth Considerations
 

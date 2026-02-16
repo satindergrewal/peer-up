@@ -406,17 +406,9 @@ peer-up/
 
 ## Daemon Architecture
 
-### serve → daemon (Zero Duplication)
+### Daemon Architecture
 
-`peerup daemon` replaces `peerup serve`. The serve command is a one-line alias:
-
-```go
-func runServe(args []string) {
-    runDaemon(args) // serve is now an alias for daemon
-}
-```
-
-Anyone who typed `peerup serve` from docs still works. The daemon always starts the control socket (zero overhead if unused — it's just a Unix listener).
+`peerup daemon` is the single command for running a P2P host. It starts the full P2P lifecycle plus a Unix domain socket API for programmatic control (zero overhead if unused — it's just a listener).
 
 ### Shared P2P Runtime
 

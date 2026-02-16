@@ -136,7 +136,7 @@ func runInit(args []string) {
 	}
 
 	fmt.Println("Next steps:")
-	fmt.Println("  1. Run as server:  peerup serve")
+	fmt.Println("  1. Run as server:  peerup daemon")
 	fmt.Println("  2. Invite a peer:  peerup invite --name home")
 	fmt.Println("  3. Or connect:     peerup proxy <target> <service> <port>")
 }

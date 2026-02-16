@@ -21,7 +21,7 @@ network:
     - "/ip4/0.0.0.0/udp/0/quic-v1"
     - "/ip6/::/tcp/0"
     - "/ip6/::/udp/0/quic-v1"
-  # Set to true on nodes behind CGNAT (required for peerup serve)
+  # Set to true on nodes behind CGNAT (required for peerup daemon)
   force_private_reachability: false
 
 relay:
@@ -42,7 +42,7 @@ protocols:
     enabled: true
     id: "/pingpong/1.0.0"
 
-# Uncomment and configure services to expose (for peerup serve):
+# Uncomment and configure services to expose (for peerup daemon):
 # services:
 #   ssh:
 #     enabled: true

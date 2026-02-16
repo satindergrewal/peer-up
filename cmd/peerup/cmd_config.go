@@ -120,7 +120,7 @@ func runConfigRollback(args []string) {
 
 	if !config.HasArchive(cfgFile) {
 		fmt.Printf("No last-known-good archive for %s\n", cfgFile)
-		fmt.Println("Archives are created automatically on each successful peerup serve startup.")
+		fmt.Println("Archives are created automatically on each successful peerup daemon startup.")
 		os.Exit(1)
 	}
 
@@ -129,7 +129,7 @@ func runConfigRollback(args []string) {
 	}
 
 	fmt.Printf("Restored %s from last-known-good archive\n", cfgFile)
-	fmt.Println("You can now restart peerup serve.")
+	fmt.Println("You can now restart peerup daemon.")
 }
 
 func runConfigApply(args []string) {
@@ -169,7 +169,7 @@ func runConfigApply(args []string) {
 	fmt.Printf("Applied %s → %s\n", newConfigPath, cfgFile)
 	fmt.Printf("Auto-revert in %s unless confirmed.\n", timeout)
 	fmt.Println()
-	fmt.Println("After restarting peerup serve and verifying connectivity:")
+	fmt.Println("After restarting peerup daemon and verifying connectivity:")
 	fmt.Println("  peerup config confirm")
 }
 

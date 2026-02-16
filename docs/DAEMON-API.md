@@ -1,6 +1,6 @@
 # Daemon API Reference
 
-The peer-up daemon (`peerup daemon`) runs a long-lived P2P host with a Unix domain socket HTTP API for programmatic control. This replaces `peerup serve` — the `serve` command is now an alias for `daemon`.
+The peer-up daemon (`peerup daemon`) runs a long-lived P2P host with a Unix domain socket HTTP API for programmatic control.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ The peer-up daemon (`peerup daemon`) runs a long-lived P2P host with a Unix doma
 
 ## Architecture
 
-The daemon extends `peerup serve` with a Unix domain socket API. It runs the full P2P lifecycle (relay connection, DHT bootstrap, service exposure, watchdog) plus an HTTP server on a Unix socket.
+The daemon runs the full P2P lifecycle (relay connection, DHT bootstrap, service exposure, watchdog) plus an HTTP server on a Unix socket.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -644,7 +644,6 @@ The CLI communicates with the daemon over the Unix socket. It reads the cookie f
 ```bash
 peerup daemon              # Start daemon (foreground)
 peerup daemon start        # Same as above
-peerup serve               # Alias for daemon (backward compatible)
 ```
 
 ### Querying the Daemon
