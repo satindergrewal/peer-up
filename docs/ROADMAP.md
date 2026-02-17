@@ -261,11 +261,20 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 - [x] TCP dial timeout — `net.DialTimeout("tcp", addr, 10s)` for local service connections (serve side and proxy side). `ConnectToService()` uses 30s context timeout for P2P stream dial.
 - [x] Fix data race in bootstrap peer counter (`atomic.Int32`)
 
-**Observability**:
+**Observability** (Batch H):
 - [ ] OpenTelemetry integration — instrument key paths with traces and metrics (invite/join flow, proxy setup, relay connection). Users pick their backend (Jaeger, Honeycomb, Prometheus, etc.)
 - [ ] Metrics export — peer count, proxy throughput, relay latency, connection counts, stream utilization
+- [ ] Connection quality scoring — per-path metrics (latency, jitter, throughput, stability) for direct, relayed, and multi-relay paths. Exposed via `peerup status --health` and daemon API
+- [ ] Hole-punch success tracking — record success/failure/elapsed for every DCUtR attempt. Aggregate into `peerup status` summary (success rate, average RTT, failure reasons). Feeds connection quality scoring
 - [ ] Audit logging — every peer auth decision logged with peer ID, action, timestamp, result (structured JSON for SIEM integration)
 - [ ] Trace correlation IDs — propagate through relay path for debugging multi-hop connections
+
+**Relay Decentralization** (future — after Batch H observability provides the data needed):
+- [ ] `require_auth` relay service — enable Circuit Relay v2 service on home nodes with `require_auth: true` (only authorized peers can reserve). Config: `relay_service.enabled`, `relay_service.require_auth`, `relay_service.resources.*`. ConnectionGater enforces auth before relay protocol runs
+- [ ] DHT-based relay discovery — authorized relays advertise on DHT under well-known CID. NATted nodes discover peer relays via AutoRelay. No central endpoint
+- [ ] Multi-relay failover — try multiple known relays in order; health-aware selection based on connection quality scores from observability data
+- [ ] Bootstrap decentralization — hardcoded seed peers in binary (ultimate fallback) → DNS seeds at `peerup.dev` → DHT peer exchange → fully self-sustaining. Same pattern as Bitcoin
+- [ ] **End goal**: Relay VPS becomes **obsolete** — not just optional. Every publicly-reachable peer-up node relays for its authorized peers. No special nodes, no central coordination
 
 **Module Consolidation** (completed — single Go module):
 - [x] Merged three Go modules (main, relay-server, cmd/keytool) into a single `go.mod`
@@ -906,6 +915,7 @@ peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for 
 - [ ] Community relay network
 - [ ] IPv6 transport testing and documentation
 - [ ] Split tunneling (route only specific traffic through tunnel)
+- [ ] Decentralized analytics — on-device network intelligence using statistical anomaly detection (moving average, z-score). No centralized data collection. Each node monitors its own connection quality, predicts relay degradation, and auto-switches paths before failure. Data never leaves the node. Inspired by Nokia AVA's "bring code to where the data is" philosophy. Implementation: gonum for statistics, pure Go, no ML frameworks needed for initial phases
 
 **Protocol & Security Evolution**:
 - [ ] MASQUE relay transport ([RFC 9298](https://www.ietf.org/rfc/rfc9298.html)) — HTTP/3 relay alternative to Circuit Relay v2. Looks like standard HTTPS to DPI, supports 0-RTT session resumption for instant reconnection. Could coexist with Circuit Relay v2 as user-selectable relay transport.
@@ -1063,3 +1073,4 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 **Current Phase**: 4C In Progress (Batch A ✅; Batch B ✅; Batch C ✅; Batch D ✅; Batch E ✅; Batch F ✅)
 **Phase count**: 4C–4I (7 phases, down from 9 — file sharing and service templates merged into plugin architecture)
 **Next Milestone**: Phase 4C Batch G (Test Coverage & Documentation) — expand tests to >60% coverage, Docker integration, CI coverage gates, engineering journal
+**Relay elimination**: Planned post-Batch H — `require_auth` peer relays → DHT discovery → VPS becomes obsolete
