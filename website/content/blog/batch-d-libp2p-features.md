@@ -4,6 +4,8 @@ date: 2026-02-14
 tags: [release, batch-d]
 ---
 
+![Smarter Connections Under the Hood](/peer-up/images/blog/batch-d-libp2p.svg)
+
 ## What's new
 
 peer-up now automatically detects whether it's behind NAT, prefers QUIC over TCP for faster connections, and identifies itself to peers with its exact version. These are invisible improvements — your connections just work better.
@@ -13,6 +15,8 @@ peer-up now automatically detects whether it's behind NAT, prefers QUIC over TCP
 Not every network is the same. Some have full IPv6, some are behind CGNAT, some block UDP. peer-up needs to adapt. AutoNAT v2 detects your situation accurately, QUIC gives faster connection establishment when available, and TCP remains the universal fallback.
 
 ## Technical highlights
+
+![Transport negotiation priority — QUIC first, TCP fallback, WebSocket for censorship resistance](/peer-up/images/blog/batch-d-transport-stack.svg)
 
 - **AutoNAT v2**: More reliable NAT detection than v1. Peers probe each other to determine reachability, enabling smarter relay decisions
 - **QUIC-preferred transport ordering**: QUIC first (3 RTTs, native multiplexing), TCP second (universal fallback), WebSocket third (anti-censorship). First transport to succeed wins

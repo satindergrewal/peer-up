@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Logo V1: "Ascending Peers"
+       Two circles (peers) connected by an upward-curving arc (the tunnel).
+       The arc goes UP — encoding "peer-up" literally.
+       Clean, geometric, works at favicon size. -->
+  <defs>
+    <linearGradient id="arcGrad1" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <!-- Upward arc connecting the two peers -->
+  <path d="M 120 340 Q 256 60 392 340"
+        fill="none" stroke="url(#arcGrad1)" stroke-width="32" stroke-linecap="round"/>
+  <!-- Left peer (node) -->
+  <circle cx="120" cy="340" r="48" fill="#3b82f6"/>
+  <!-- Right peer (node) -->
+  <circle cx="392" cy="340" r="48" fill="#7c3aed"/>
+</svg>
