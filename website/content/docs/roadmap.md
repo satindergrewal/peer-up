@@ -510,9 +510,12 @@ Waiting for transfers...
 **Deliverables**:
 
 **Website & Documentation (peerup.dev)**:
-- [ ] Static documentation site built with [Hugo](https://gohugo.io/) + [Hextra](https://imfing.github.io/hextra/) theme — Go-based SSG, fast builds, matches the project toolchain, built-in search and dark mode
-- [ ] GitHub Pages hosting with custom domain (`peerup.dev`)
-- [ ] GitHub Actions CI/CD — build Hugo site and deploy to GitHub Pages on every push to `main`
+- [x] Static documentation site built with [Hugo](https://gohugo.io/) + [Hextra](https://imfing.github.io/hextra/) theme — Go-based SSG, fast builds, matches the project toolchain, built-in search and dark mode
+- [x] Automated docs sync (`website/sync-docs.sh`) — transforms `docs/*.md` into Hugo-ready content with front matter and link rewriting
+- [x] Elegant landing page with hero section and feature grid
+- [x] Seven retroactive blog posts for Batches A-G (outcomes-focused)
+- [x] GitHub Actions CI/CD — build Hugo site and deploy to GitHub Pages on every push to `main`
+- [ ] GitHub Pages hosting with custom domain (`peerup.dev`) — DNS pointing pending
 - [ ] DNS managed on Cloudflare — CNAME `peerup.dev` → GitHub Pages, CNAME `get.peerup.dev` → serves install script
 - [ ] Landing page — project overview, quick start, feature highlights, comparison table (vs Tailscale/ZeroTier/Netbird)
 - [ ] Existing docs rendered as site pages (ARCHITECTURE, FAQ, TESTING, ROADMAP)
@@ -875,6 +878,8 @@ Format: laptop.grewal.eth
 ### Privacy Narrative — peer-up's Moat
 
 peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for people who care about owning their network.
+
+> *Comparison based on publicly available documentation as of 2026-02. Details may be outdated — corrections welcome via [GitHub issues](https://github.com/satindergrewal/peer-up/issues).*
 
 | | **peer-up** | **Tailscale** |
 |---|---|---|

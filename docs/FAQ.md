@@ -1,5 +1,7 @@
 # peer-up FAQ & Technical Comparison
 
+> **Note on comparisons**: All technical comparisons in this document are based on publicly available documentation, specifications, and published benchmarks as of the date listed at the bottom. Software evolves — details may be outdated by the time you read this. If you spot an inaccuracy, corrections are welcome via [GitHub issues](https://github.com/satindergrewal/peer-up/issues) or pull requests.
+
 ## How does peer-up compare to Tailscale?
 
 peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for people who care about owning their network.
@@ -198,17 +200,6 @@ Yes, public IPFS relays exist — thousands of them. Since Circuit Relay v2, eve
 | **SSH session** | Drops after 2 min or 128 KB | Works indefinitely |
 
 Public relays are designed as a **trampoline** — they help two peers find each other, attempt a hole-punch, and then drop off. They were never meant for sustained traffic like SSH sessions, XRDP, or LLM inference.
-
-### Hybrid approach (possible future optimization)
-
-```
-1. Peer discovery → Use public IPFS relays (free, no VPS needed)
-2. Hole-punch attempt → DCUtR via public relay
-3. If hole-punch succeeds → Direct connection (no relay at all)
-4. If hole-punch fails → Fall back to YOUR relay for sustained traffic
-```
-
-This would mean users who aren't behind symmetric NAT wouldn't need your relay at all. Only Starlink/CGNAT users would need the self-hosted VPS.
 
 ---
 

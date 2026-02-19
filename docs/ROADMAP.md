@@ -874,6 +874,8 @@ Format: laptop.grewal.eth
 
 peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for people who care about owning their network.
 
+> *Comparison based on publicly available documentation as of 2026-02. Details may be outdated — corrections welcome via [GitHub issues](https://github.com/satindergrewal/peer-up/issues).*
+
 | | **peer-up** | **Tailscale** |
 |---|---|---|
 | **Accounts** | None — no email, no OAuth | Required (Google, GitHub, etc.) |
