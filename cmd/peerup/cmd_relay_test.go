@@ -586,3 +586,191 @@ func TestDoStatus(t *testing.T) {
 		})
 	}
 }
+
+// ----- doRelayAdd success path tests -----
+
+func TestDoRelayAddSuccess(t *testing.T) {
+	t.Run("add full multiaddr", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+		pid := generateTestPeerID(t)
+		newAddr := "/ip4/5.6.7.8/tcp/8888/p2p/" + pid
+
+		var stdout bytes.Buffer
+		err := doRelayAdd([]string{"--config", cfgPath, newAddr}, &stdout)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		out := stdout.String()
+		if !strings.Contains(out, "Config:") {
+			t.Errorf("output should contain 'Config:', got:\n%s", out)
+		}
+
+		// Verify address written to config
+		data, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("read config: %v", err)
+		}
+		if !strings.Contains(string(data), newAddr) {
+			t.Errorf("config should contain new relay address:\n%s", string(data))
+		}
+	})
+
+	t.Run("add IP:PORT with peer-id", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+		pid := generateTestPeerID(t)
+
+		var stdout bytes.Buffer
+		err := doRelayAdd([]string{"--config", cfgPath, "5.6.7.8:8888", "--peer-id", pid}, &stdout)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify multiaddr was constructed and written
+		data, _ := os.ReadFile(cfgPath)
+		expected := "/ip4/5.6.7.8/tcp/8888/p2p/" + pid
+		if !strings.Contains(string(data), expected) {
+			t.Errorf("config should contain constructed multiaddr %q:\n%s", expected, string(data))
+		}
+	})
+
+	t.Run("duplicate is no-op", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+		existing := "/ip4/1.2.3.4/tcp/7777/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+
+		var stdout bytes.Buffer
+		err := doRelayAdd([]string{"--config", cfgPath, existing}, &stdout)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		out := stdout.String()
+		if !strings.Contains(out, "No new relay addresses") {
+			t.Errorf("output should indicate no-op, got:\n%s", out)
+		}
+	})
+
+	t.Run("short format missing peer-id returns error", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+
+		var stdout bytes.Buffer
+		err := doRelayAdd([]string{"--config", cfgPath, "5.6.7.8:8888"}, &stdout)
+		if err == nil {
+			t.Fatal("expected error for missing --peer-id")
+		}
+		if !strings.Contains(err.Error(), "peer-id") {
+			t.Errorf("error should mention peer-id: %v", err)
+		}
+	})
+
+	t.Run("invalid peer-id returns error", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+
+		var stdout bytes.Buffer
+		err := doRelayAdd([]string{"--config", cfgPath, "5.6.7.8:8888", "--peer-id", "not-valid"}, &stdout)
+		if err == nil {
+			t.Fatal("expected error for invalid peer-id")
+		}
+		if !strings.Contains(err.Error(), "invalid peer ID") {
+			t.Errorf("error should mention invalid peer ID: %v", err)
+		}
+	})
+}
+
+// ----- doRelayRemove success path tests -----
+
+func TestDoRelayRemoveSuccess(t *testing.T) {
+	t.Run("remove one of two relays", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+
+		// Add a second relay first
+		pid := generateTestPeerID(t)
+		secondAddr := "/ip4/5.6.7.8/tcp/8888/p2p/" + pid
+		var buf bytes.Buffer
+		if err := doRelayAdd([]string{"--config", cfgPath, secondAddr}, &buf); err != nil {
+			t.Fatalf("setup: add second relay: %v", err)
+		}
+
+		// Remove the original relay
+		originalAddr := "/ip4/1.2.3.4/tcp/7777/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+		var stdout bytes.Buffer
+		err := doRelayRemove([]string{"--config", cfgPath, originalAddr}, &stdout)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		out := stdout.String()
+		if !strings.Contains(out, "Config:") {
+			t.Errorf("output should contain 'Config:', got:\n%s", out)
+		}
+
+		// Verify original is gone, second remains
+		data, _ := os.ReadFile(cfgPath)
+		content := string(data)
+		if strings.Contains(content, "1.2.3.4") {
+			t.Error("config should not contain removed relay address")
+		}
+		if !strings.Contains(content, secondAddr) {
+			t.Error("config should still contain the second relay address")
+		}
+	})
+}
+
+// ----- validatePeerID tests -----
+
+func TestValidatePeerID(t *testing.T) {
+	validPID := generateTestPeerID(t)
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid Ed25519 peer ID", validPID, false},
+		{"empty string", "", true},
+		{"random garbage", "not-a-peer-id", true},
+		{"partial peer ID prefix", "12D3KooW", true},
+		{"too short base58", "12D3KooWABC", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePeerID(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePeerID(%q) err=%v, wantErr=%v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ----- resolveConfigFileErr tests -----
+
+func TestResolveConfigFileErr(t *testing.T) {
+	t.Run("valid config", func(t *testing.T) {
+		cfgPath := writeTestConfigDir(t)
+
+		path, cfg, err := resolveConfigFileErr(cfgPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if path != cfgPath {
+			t.Errorf("path = %q, want %q", path, cfgPath)
+		}
+		if cfg == nil {
+			t.Fatal("config should not be nil")
+		}
+		if cfg.Discovery.Rendezvous != "test-network" {
+			t.Errorf("rendezvous = %q, want %q", cfg.Discovery.Rendezvous, "test-network")
+		}
+	})
+
+	t.Run("missing config", func(t *testing.T) {
+		_, _, err := resolveConfigFileErr("/tmp/nonexistent-test-dir-peerup/peerup.yaml")
+		if err == nil {
+			t.Fatal("expected error for missing config")
+		}
+		if !strings.Contains(err.Error(), "config error") {
+			t.Errorf("error should mention config error: %v", err)
+		}
+	})
+}

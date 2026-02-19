@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -288,26 +289,29 @@ func buildRelayResources(rc *config.RelayResourcesConfig) (relayv2.Resources, *r
 	return resources, limit
 }
 
-// loadRelayAuthKeysPath loads relay config and returns the authorized_keys file path.
-func loadRelayAuthKeysPath(configFile string) string {
+// loadRelayAuthKeysPathErr loads relay config and returns the authorized_keys file path.
+func loadRelayAuthKeysPathErr(configFile string) (string, error) {
 	cfg, err := config.LoadRelayServerConfig(configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return "", fmt.Errorf("failed to load config: %w", err)
 	}
 	if cfg.Security.AuthorizedKeysFile == "" {
-		log.Fatal("No authorized_keys_file configured")
+		return "", fmt.Errorf("no authorized_keys_file configured")
 	}
-	return cfg.Security.AuthorizedKeysFile
+	return cfg.Security.AuthorizedKeysFile, nil
 }
 
-func runRelayAuthorize(args []string, configFile string) {
+func loadRelayAuthKeysPath(configFile string) string {
+	path, err := loadRelayAuthKeysPathErr(configFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return path
+}
+
+func doRelayAuthorize(args []string, configFile string, stdout io.Writer) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: peerup relay authorize <peer-id> [comment]")
-		fmt.Println()
-		fmt.Println("Examples:")
-		fmt.Println("  peerup relay authorize 12D3KooW... home-node")
-		fmt.Println("  peerup relay authorize 12D3KooW... laptop")
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup relay authorize <peer-id> [comment]")
 	}
 
 	peerID := args[0]
@@ -316,57 +320,89 @@ func runRelayAuthorize(args []string, configFile string) {
 		comment = strings.Join(args[1:], " ")
 	}
 
-	authKeysPath := loadRelayAuthKeysPath(configFile)
+	authKeysPath, err := loadRelayAuthKeysPathErr(configFile)
+	if err != nil {
+		return err
+	}
 	if err := auth.AddPeer(authKeysPath, peerID, comment); err != nil {
-		log.Fatalf("Error: %v", err)
+		return fmt.Errorf("failed to authorize peer: %w", err)
 	}
 
-	fmt.Printf("Authorized: %s\n", peerID[:16]+"...")
+	fmt.Fprintf(stdout, "Authorized: %s\n", peerID[:min(16, len(peerID))]+"...")
 	if comment != "" {
-		fmt.Printf("Comment:    %s\n", comment)
+		fmt.Fprintf(stdout, "Comment:    %s\n", comment)
 	}
-	fmt.Printf("File:       %s\n", authKeysPath)
-	fmt.Println()
-	fmt.Println("Restart relay to apply: sudo systemctl restart peerup-relay")
+	fmt.Fprintf(stdout, "File:       %s\n", authKeysPath)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Restart relay to apply: sudo systemctl restart peerup-relay")
+	return nil
 }
 
-func runRelayDeauthorize(args []string, configFile string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: peerup relay deauthorize <peer-id>")
+func runRelayAuthorize(args []string, configFile string) {
+	if err := doRelayAuthorize(args, configFile, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func doRelayDeauthorize(args []string, configFile string, stdout io.Writer) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: peerup relay deauthorize <peer-id>")
 	}
 
 	peerID := args[0]
-	authKeysPath := loadRelayAuthKeysPath(configFile)
+	authKeysPath, err := loadRelayAuthKeysPathErr(configFile)
+	if err != nil {
+		return err
+	}
 	if err := auth.RemovePeer(authKeysPath, peerID); err != nil {
-		log.Fatalf("Error: %v", err)
+		return fmt.Errorf("failed to deauthorize peer: %w", err)
 	}
 
-	fmt.Printf("Deauthorized: %s\n", peerID[:16]+"...")
-	fmt.Println()
-	fmt.Println("Restart relay to apply: sudo systemctl restart peerup-relay")
+	fmt.Fprintf(stdout, "Deauthorized: %s\n", peerID[:min(16, len(peerID))]+"...")
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Restart relay to apply: sudo systemctl restart peerup-relay")
+	return nil
 }
 
-func runRelayListPeers(configFile string) {
-	authKeysPath := loadRelayAuthKeysPath(configFile)
+func runRelayDeauthorize(args []string, configFile string) {
+	if err := doRelayDeauthorize(args, configFile, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func doRelayListPeers(configFile string, stdout io.Writer) error {
+	authKeysPath, err := loadRelayAuthKeysPathErr(configFile)
+	if err != nil {
+		return err
+	}
 	peers, err := auth.ListPeers(authKeysPath)
 	if err != nil {
-		log.Fatalf("Error: %v", err)
+		return fmt.Errorf("failed to list peers: %w", err)
 	}
 
-	fmt.Printf("Authorized peers (%s):\n\n", authKeysPath)
+	fmt.Fprintf(stdout, "Authorized peers (%s):\n\n", authKeysPath)
 	if len(peers) == 0 {
-		fmt.Println("  (none)")
+		fmt.Fprintln(stdout, "  (none)")
 	} else {
 		for _, p := range peers {
 			if p.Comment != "" {
-				fmt.Printf("  %s  # %s\n", p.PeerID, p.Comment)
+				fmt.Fprintf(stdout, "  %s  # %s\n", p.PeerID, p.Comment)
 			} else {
-				fmt.Printf("  %s\n", p.PeerID)
+				fmt.Fprintf(stdout, "  %s\n", p.PeerID)
 			}
 		}
 	}
-	fmt.Printf("\nTotal: %d peer(s)\n", len(peers))
+	fmt.Fprintf(stdout, "\nTotal: %d peer(s)\n", len(peers))
+	return nil
+}
+
+func runRelayListPeers(configFile string) {
+	if err := doRelayListPeers(configFile, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func runRelayInfo(configFile string) {
@@ -481,30 +517,42 @@ func runRelayServerConfig(args []string, configFile string) {
 	}
 }
 
-func runRelayServerConfigValidate(configFile string) {
+func doRelayServerConfigValidate(configFile string, stdout io.Writer) error {
 	cfg, err := config.LoadRelayServerConfig(configFile)
 	if err != nil {
-		fmt.Printf("FAIL: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("FAIL: %v", err)
 	}
 	if err := config.ValidateRelayServerConfig(cfg); err != nil {
-		fmt.Printf("FAIL: %s\n", err)
+		return fmt.Errorf("FAIL: %v", err)
+	}
+	fmt.Fprintf(stdout, "OK: %s is valid\n", configFile)
+	return nil
+}
+
+func runRelayServerConfigValidate(configFile string) {
+	if err := doRelayServerConfigValidate(configFile, os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Printf("OK: %s is valid\n", configFile)
+}
+
+func doRelayServerConfigRollback(configFile string, stdout io.Writer) error {
+	if !config.HasArchive(configFile) {
+		return fmt.Errorf("no last-known-good archive for %s\nArchives are created automatically on each successful relay startup", configFile)
+	}
+	if err := config.Rollback(configFile); err != nil {
+		return fmt.Errorf("rollback failed: %w", err)
+	}
+	fmt.Fprintf(stdout, "Restored %s from last-known-good archive\n", configFile)
+	fmt.Fprintln(stdout, "You can now restart the relay.")
+	return nil
 }
 
 func runRelayServerConfigRollback(configFile string) {
-	if !config.HasArchive(configFile) {
-		fmt.Printf("No last-known-good archive for %s\n", configFile)
-		fmt.Println("Archives are created automatically on each successful relay startup.")
+	if err := doRelayServerConfigRollback(configFile, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if err := config.Rollback(configFile); err != nil {
-		log.Fatalf("Rollback failed: %v", err)
-	}
-	fmt.Printf("Restored %s from last-known-good archive\n", configFile)
-	fmt.Println("You can now restart the relay.")
 }
 
 // buildPublicMultiaddrs constructs public multiaddrs from listen addresses by
