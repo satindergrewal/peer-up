@@ -16,7 +16,7 @@ import (
 func runConfig(args []string) {
 	if len(args) < 1 {
 		printConfigUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch args[0] {
@@ -33,14 +33,14 @@ func runConfig(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown config command: %s\n\n", args[0])
 		printConfigUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
 func runConfigValidate(args []string) {
 	if err := doConfigValidate(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -76,7 +76,7 @@ func doConfigValidate(args []string, stdout io.Writer) error {
 func runConfigShow(args []string) {
 	if err := doConfigShow(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -133,7 +133,7 @@ func doConfigShow(args []string, stdout io.Writer) error {
 func runConfigRollback(args []string) {
 	if err := doConfigRollback(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -166,7 +166,7 @@ func doConfigRollback(args []string, stdout io.Writer) error {
 func runConfigApply(args []string) {
 	if err := doConfigApply(args, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -215,7 +215,7 @@ func doConfigApply(args []string, stdout, stderr io.Writer) error {
 func runConfigConfirm(args []string) {
 	if err := doConfigConfirm(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 func runWhoami(args []string) {
 	if err := doWhoami(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

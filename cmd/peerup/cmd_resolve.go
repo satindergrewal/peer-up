@@ -17,7 +17,7 @@ import (
 func runResolve(args []string) {
 	if err := doResolve(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 func runStatus(args []string) {
 	if err := doStatus(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

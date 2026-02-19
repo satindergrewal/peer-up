@@ -17,7 +17,7 @@ import (
 func runRelay(args []string) {
 	if len(args) < 1 {
 		printRelayServeUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Extract --config flag for server-side commands (relay serve, authorize, etc.)
@@ -62,7 +62,7 @@ func runRelay(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown relay command: %s\n\n", args[0])
 		printRelayServeUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -98,7 +98,7 @@ func resolveConfigFileErr(configFlag string) (string, *config.NodeConfig, error)
 func runRelayAdd(args []string) {
 	if err := doRelayAdd(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -224,7 +224,7 @@ func doRelayAdd(args []string, stdout io.Writer) error {
 func runRelayList(args []string) {
 	if err := doRelayList(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -257,7 +257,7 @@ func doRelayList(args []string, stdout io.Writer) error {
 func runRelayRemove(args []string) {
 	if err := doRelayRemove(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 func runService(args []string) {
 	if len(args) < 1 {
 		printServiceUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch args[0] {
@@ -32,7 +32,7 @@ func runService(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown service command: %s\n\n", args[0])
 		printServiceUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -61,7 +61,7 @@ func printServiceUsage() {
 func runServiceAdd(args []string) {
 	if err := doServiceAdd(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -185,7 +185,7 @@ func doServiceAdd(args []string, stdout io.Writer) error {
 func runServiceList(args []string) {
 	if err := doServiceList(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -227,7 +227,7 @@ func doServiceList(args []string, stdout io.Writer) error {
 func runServiceSetEnabled(args []string, enabled bool) {
 	if err := doServiceSetEnabled(args, enabled, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -349,7 +349,7 @@ func doServiceSetEnabled(args []string, enabled bool, stdout io.Writer) error {
 func runServiceRemove(args []string) {
 	if err := doServiceRemove(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

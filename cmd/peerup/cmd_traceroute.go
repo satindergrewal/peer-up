@@ -32,7 +32,7 @@ func runTraceroute(args []string) {
 	remaining := fs.Args()
 	if len(remaining) < 1 {
 		fmt.Println("Usage: peerup traceroute [--config <path>] [--json] <target>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	target := remaining[0]

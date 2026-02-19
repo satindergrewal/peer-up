@@ -67,7 +67,7 @@ func runJoin(args []string) {
 		fmt.Println("In non-interactive mode, the code can also come from:")
 		fmt.Println("  PEERUP_INVITE_CODE environment variable")
 		fmt.Println("  stdin (one line)")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Decode invite

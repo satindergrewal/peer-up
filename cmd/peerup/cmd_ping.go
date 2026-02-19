@@ -39,7 +39,7 @@ func runPing(args []string) {
 		fmt.Println("  peerup ping home-server")
 		fmt.Println("  peerup ping home-server -c 5")
 		fmt.Println("  peerup ping 12D3KooWDRDM... -c 3 --json")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	target := remaining[0]

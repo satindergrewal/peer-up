@@ -18,7 +18,7 @@ import (
 func runAuth(args []string) {
 	if len(args) < 1 {
 		printAuthUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch args[0] {
@@ -33,7 +33,7 @@ func runAuth(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown auth command: %s\n\n", args[0])
 		printAuthUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -76,7 +76,7 @@ func resolveAuthKeysPathErr(fileFlag, configFlag string) (string, error) {
 func runAuthAdd(args []string) {
 	if err := doAuthAdd(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -115,7 +115,7 @@ func doAuthAdd(args []string, stdout io.Writer) error {
 func runAuthList(args []string) {
 	if err := doAuthList(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -161,7 +161,7 @@ func doAuthList(args []string, stdout io.Writer) error {
 func runAuthRemove(args []string) {
 	if err := doAuthRemove(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -196,7 +196,7 @@ func doAuthRemove(args []string, stdout io.Writer) error {
 func runAuthValidate(args []string) {
 	if err := doAuthValidate(args, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

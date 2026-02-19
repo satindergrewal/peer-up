@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch os.Args[1] {
@@ -60,7 +60,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

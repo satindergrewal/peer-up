@@ -341,7 +341,7 @@ func doRelayAuthorize(args []string, configFile string, stdout io.Writer) error 
 func runRelayAuthorize(args []string, configFile string) {
 	if err := doRelayAuthorize(args, configFile, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -368,7 +368,7 @@ func doRelayDeauthorize(args []string, configFile string, stdout io.Writer) erro
 func runRelayDeauthorize(args []string, configFile string) {
 	if err := doRelayDeauthorize(args, configFile, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -401,7 +401,7 @@ func doRelayListPeers(configFile string, stdout io.Writer) error {
 func runRelayListPeers(configFile string) {
 	if err := doRelayListPeers(configFile, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -504,7 +504,7 @@ func runRelayServerConfig(args []string, configFile string) {
 		fmt.Println("Commands:")
 		fmt.Println("  validate    Validate relay-server.yaml without starting")
 		fmt.Println("  rollback    Restore last-known-good config")
-		os.Exit(1)
+		osExit(1)
 	}
 	switch args[0] {
 	case "validate":
@@ -513,7 +513,7 @@ func runRelayServerConfig(args []string, configFile string) {
 		runRelayServerConfigRollback(configFile)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown config command: %s\n", args[0])
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -532,7 +532,7 @@ func doRelayServerConfigValidate(configFile string, stdout io.Writer) error {
 func runRelayServerConfigValidate(configFile string) {
 	if err := doRelayServerConfigValidate(configFile, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -551,7 +551,7 @@ func doRelayServerConfigRollback(configFile string, stdout io.Writer) error {
 func runRelayServerConfigRollback(configFile string) {
 	if err := doRelayServerConfigRollback(configFile, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 func runInit(args []string) {
 	if err := doInit(args, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

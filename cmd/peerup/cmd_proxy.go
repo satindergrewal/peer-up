@@ -34,7 +34,7 @@ func runProxy(args []string) {
 		fmt.Println("  peerup proxy home ssh 2222")
 		fmt.Println("  peerup proxy home xrdp 13389")
 		fmt.Println("  peerup proxy --config /path/to/config.yaml home ssh 2222")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	target := remaining[0]
