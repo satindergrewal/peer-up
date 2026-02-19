@@ -485,6 +485,10 @@ func setupRelay() error {
 	if err := writeFileInContainer("relay", "/data/relay-server.yaml", cfg); err != nil {
 		return fmt.Errorf("failed to write relay config: %w", err)
 	}
+	// Security hardening requires 0600 on config files.
+	if _, _, err := dockerExec("relay", "chmod", "600", "/data/relay-server.yaml"); err != nil {
+		return fmt.Errorf("failed to chmod relay config: %w", err)
+	}
 
 	// Create empty authorized_keys file.
 	if err := writeFileInContainer("relay", "/data/relay_authorized_keys", "# test relay - gating disabled\n"); err != nil {
@@ -529,6 +533,10 @@ func setupNode(container, relayAddr string) error {
 	// Write config.
 	if err := writeFileInContainer(container, "/root/.config/peerup/config.yaml", cfg); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
+	}
+	// Security hardening requires 0600 on config files.
+	if _, _, err := dockerExec(container, "chmod", "600", "/root/.config/peerup/config.yaml"); err != nil {
+		return fmt.Errorf("failed to chmod node config: %w", err)
 	}
 
 	// Write empty authorized_keys.
