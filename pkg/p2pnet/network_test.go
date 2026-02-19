@@ -2,6 +2,7 @@ package p2pnet
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,7 +10,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
+	"github.com/satindergrewal/peer-up/internal/auth"
 	"github.com/satindergrewal/peer-up/internal/config"
 )
 
@@ -414,4 +417,195 @@ func TestAddRelayAddressesForPeer(t *testing.T) {
 	if !found {
 		t.Error("expected p2p-circuit address in peerstore")
 	}
+}
+
+// --- PeerIDFromKeyFile ---
+
+func TestPeerIDFromKeyFile(t *testing.T) {
+	t.Run("creates and loads", func(t *testing.T) {
+		dir := t.TempDir()
+		keyFile := filepath.Join(dir, "test.key")
+
+		pid, err := PeerIDFromKeyFile(keyFile)
+		if err != nil {
+			t.Fatalf("PeerIDFromKeyFile: %v", err)
+		}
+		if pid == "" {
+			t.Error("PeerIDFromKeyFile returned empty peer ID")
+		}
+
+		// Second call should return same peer ID
+		pid2, err := PeerIDFromKeyFile(keyFile)
+		if err != nil {
+			t.Fatalf("PeerIDFromKeyFile (reload): %v", err)
+		}
+		if pid != pid2 {
+			t.Errorf("peer IDs differ: %s vs %s", pid, pid2)
+		}
+	})
+
+	t.Run("invalid path", func(t *testing.T) {
+		_, err := PeerIDFromKeyFile("/nonexistent/dir/test.key")
+		if err != nil {
+			// Expected — can't create key in nonexistent dir.
+			// On some systems this might succeed if the parent exists.
+			// Just verify it doesn't panic.
+		}
+	})
+}
+
+// --- Network.New additional branches ---
+
+func TestNetworkNew_WithRelayConfig(t *testing.T) {
+	dir := t.TempDir()
+	net, err := New(&Config{
+		KeyFile:            filepath.Join(dir, "test.key"),
+		EnableRelay:        true,
+		RelayAddrs:         []string{"/ip4/203.0.113.50/tcp/7777/p2p/12D3KooWRzaGMTqQbRHNMZkAYj8ALUXoK99qSjhiFLanDoVWK9An"},
+		ForcePrivate:       true,
+		EnableNATPortMap:   true,
+		EnableHolePunching: true,
+	})
+	if err != nil {
+		t.Fatalf("New with relay config: %v", err)
+	}
+	defer net.Close()
+
+	if net.Host() == nil {
+		t.Error("Host() returned nil")
+	}
+}
+
+func TestNetworkNew_WithRelayInvalidAddrs(t *testing.T) {
+	dir := t.TempDir()
+	_, err := New(&Config{
+		KeyFile:     filepath.Join(dir, "test.key"),
+		EnableRelay: true,
+		RelayAddrs:  []string{"not-a-multiaddr"},
+	})
+	if err == nil {
+		t.Error("expected error for invalid relay addr")
+	}
+}
+
+func TestNetworkNew_WithGater(t *testing.T) {
+	dir := t.TempDir()
+	gater := auth.NewAuthorizedPeerGater(nil)
+
+	net, err := New(&Config{
+		KeyFile: filepath.Join(dir, "test.key"),
+		Gater:   gater,
+	})
+	if err != nil {
+		t.Fatalf("New with Gater: %v", err)
+	}
+	defer net.Close()
+}
+
+func TestNetworkNew_WithAuthorizedKeysFile(t *testing.T) {
+	dir := t.TempDir()
+	akPath := filepath.Join(dir, "authorized_keys")
+	if err := os.WriteFile(akPath, []byte(""), 0600); err != nil {
+		t.Fatalf("write authorized_keys: %v", err)
+	}
+
+	net, err := New(&Config{
+		KeyFile:        filepath.Join(dir, "test.key"),
+		AuthorizedKeys: akPath,
+	})
+	if err != nil {
+		t.Fatalf("New with AuthorizedKeys: %v", err)
+	}
+	defer net.Close()
+}
+
+func TestNetworkNew_WithBadAuthorizedKeysFile(t *testing.T) {
+	dir := t.TempDir()
+	_, err := New(&Config{
+		KeyFile:        filepath.Join(dir, "test.key"),
+		AuthorizedKeys: filepath.Join(dir, "nonexistent_keys"),
+	})
+	if err == nil {
+		t.Error("expected error for missing authorized_keys file")
+	}
+}
+
+// --- ExposeService / UnexposeService invalid name ---
+
+func TestExposeService_InvalidName(t *testing.T) {
+	net := newListeningNetwork(t)
+	if err := net.ExposeService("INVALID", "localhost:22"); err == nil {
+		t.Error("expected error for invalid service name")
+	}
+}
+
+func TestUnexposeService_InvalidName(t *testing.T) {
+	net := newListeningNetwork(t)
+	if err := net.UnexposeService("INVALID"); err == nil {
+		t.Error("expected error for invalid service name")
+	}
+}
+
+// --- ConnectToService (thin wrapper with 30s timeout) ---
+
+func TestConnectToService_DefaultTimeout(t *testing.T) {
+	netA := newListeningNetwork(t)
+	netB := newListeningNetwork(t)
+	connectNetworks(t, netA, netB)
+
+	netB.ExposeService("echo", "localhost:1")
+
+	conn, err := netA.ConnectToService(netB.PeerID(), "echo")
+	if err != nil {
+		t.Fatalf("ConnectToService: %v", err)
+	}
+	conn.Close()
+}
+
+func TestConnectToServiceContext_InvalidName(t *testing.T) {
+	net := newListeningNetwork(t)
+	_, err := net.ConnectToServiceContext(context.Background(), net.PeerID(), "INVALID")
+	if err == nil {
+		t.Error("expected error for invalid service name")
+	}
+}
+
+// --- holePunchTracer.Trace ---
+
+func TestHolePunchTracer(t *testing.T) {
+	tracer := &holePunchTracer{}
+	pid := genTestPeerID(t)
+
+	// Exercise all three event types — they just log, so we verify no panic
+	tracer.Trace(&holepunch.Event{
+		Remote: pid,
+		Evt:    &holepunch.StartHolePunchEvt{RTT: time.Millisecond},
+	})
+
+	tracer.Trace(&holepunch.Event{
+		Remote: pid,
+		Evt:    &holepunch.EndHolePunchEvt{Success: true, EllapsedTime: time.Millisecond},
+	})
+
+	tracer.Trace(&holepunch.Event{
+		Remote: pid,
+		Evt:    &holepunch.EndHolePunchEvt{Success: false, EllapsedTime: time.Millisecond, Error: "timeout"},
+	})
+
+	tracer.Trace(&holepunch.Event{
+		Remote: pid,
+		Evt:    &holepunch.DirectDialEvt{Success: true, EllapsedTime: time.Millisecond},
+	})
+
+	tracer.Trace(&holepunch.Event{
+		Remote: pid,
+		Evt:    &holepunch.DirectDialEvt{Success: false, Error: "connection refused"},
+	})
+
+	// Short peer ID (< 16 chars) path
+	shortPID := peer.ID("short")
+	tracer.Trace(&holepunch.Event{
+		Remote: shortPID,
+		Evt:    &holepunch.StartHolePunchEvt{},
+	})
 }

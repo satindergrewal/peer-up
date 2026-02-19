@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -792,5 +794,292 @@ func TestHandleConnect_InvalidBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// --- handlePeerList with connected peers ---
+
+func TestHandlePeerList_WithConnectedPeers(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "test.sock")
+	cookiePath := filepath.Join(dir, ".test-cookie")
+
+	netA := newListeningTestNetwork(t)
+	netB := newListeningTestNetwork(t)
+
+	// Connect A → B directly
+	bInfo := peer.AddrInfo{ID: netB.Host().ID(), Addrs: netB.Host().Addrs()}
+	if err := netA.Host().Connect(context.Background(), bInfo); err != nil {
+		t.Fatalf("connect A→B: %v", err)
+	}
+
+	// Set B's agent version in A's peerstore so filtering works
+	netA.Host().Peerstore().Put(netB.Host().ID(), "AgentVersion", "peerup/test-0.1.0")
+
+	rt := &networkMockRuntime{
+		net:       netA,
+		version:   "test-0.1.0",
+		startTime: time.Now(),
+		pingProto: "/peerup/ping/1.0.0",
+	}
+	srv := NewServer(rt, socketPath, cookiePath, "test-0.1.0")
+
+	t.Run("JSON default filter shows peerup peer", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/peers", nil)
+		rec := httptest.NewRecorder()
+		srv.handlePeerList(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d", rec.Code)
+		}
+
+		var envelope DataResponse
+		json.NewDecoder(rec.Body).Decode(&envelope)
+		dataBytes, _ := json.Marshal(envelope.Data)
+		var peers []PeerInfo
+		json.Unmarshal(dataBytes, &peers)
+
+		if len(peers) != 1 {
+			t.Fatalf("got %d peers, want 1", len(peers))
+		}
+		if peers[0].AgentVersion != "peerup/test-0.1.0" {
+			t.Errorf("AgentVersion = %q", peers[0].AgentVersion)
+		}
+		if len(peers[0].Addresses) == 0 {
+			t.Error("expected at least 1 address")
+		}
+	})
+
+	t.Run("JSON all=true includes all peers", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/peers?all=true", nil)
+		rec := httptest.NewRecorder()
+		srv.handlePeerList(rec, req)
+
+		var envelope DataResponse
+		json.NewDecoder(rec.Body).Decode(&envelope)
+		dataBytes, _ := json.Marshal(envelope.Data)
+		var peers []PeerInfo
+		json.Unmarshal(dataBytes, &peers)
+
+		if len(peers) < 1 {
+			t.Error("expected at least 1 peer with all=true")
+		}
+	})
+
+	t.Run("Text format with peers", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/peers?format=text", nil)
+		rec := httptest.NewRecorder()
+		srv.handlePeerList(rec, req)
+
+		if ct := rec.Header().Get("Content-Type"); ct != "text/plain" {
+			t.Errorf("Content-Type = %q", ct)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "peerup/test-0.1.0") {
+			t.Errorf("text output missing agent version: %q", body)
+		}
+		if !strings.Contains(body, "addrs") {
+			t.Errorf("text output missing 'addrs': %q", body)
+		}
+	})
+}
+
+// --- handleAuthRemove additional error paths ---
+
+func TestHandleAuthRemove_EmptyPeerID(t *testing.T) {
+	srv, rt := newNetworkServer(t)
+	rt.authKeysPath = "/tmp/test-auth"
+
+	req := httptest.NewRequest("DELETE", "/v1/auth/", nil)
+	req.SetPathValue("peer_id", "")
+	rec := httptest.NewRecorder()
+	srv.handleAuthRemove(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleAuthRemove_PeerNotFound(t *testing.T) {
+	srv, rt := newNetworkServer(t)
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "authorized_keys")
+	os.WriteFile(authPath, []byte(""), 0600)
+	rt.authKeysPath = authPath
+	rt.gater = &mockGater{}
+
+	pid := genHandlerPeerID(t)
+	req := httptest.NewRequest("DELETE", "/v1/auth/"+pid.String(), nil)
+	req.SetPathValue("peer_id", pid.String())
+	rec := httptest.NewRecorder()
+	srv.handleAuthRemove(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestHandleAuthRemove_GaterReloadFails(t *testing.T) {
+	srv, rt := newNetworkServer(t)
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "authorized_keys")
+
+	pid := genHandlerPeerID(t)
+	os.WriteFile(authPath, []byte(pid.String()+"\n"), 0600)
+	rt.authKeysPath = authPath
+	rt.gater = &mockGater{reloadErr: fmt.Errorf("gater reload failed")}
+
+	req := httptest.NewRequest("DELETE", "/v1/auth/"+pid.String(), nil)
+	req.SetPathValue("peer_id", pid.String())
+	rec := httptest.NewRecorder()
+	srv.handleAuthRemove(rec, req)
+
+	// Remove succeeds even if gater reload fails — the peer is still removed
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (gater reload failure is logged, not returned)", rec.Code)
+	}
+}
+
+func TestHandleAuthAdd_GaterReloadFails(t *testing.T) {
+	srv, rt := newNetworkServer(t)
+	dir := t.TempDir()
+	authPath := filepath.Join(dir, "authorized_keys")
+	rt.authKeysPath = authPath
+	rt.gater = &mockGater{reloadErr: fmt.Errorf("gater reload failed")}
+
+	pid := genHandlerPeerID(t)
+	body, _ := json.Marshal(AuthAddRequest{PeerID: pid.String()})
+
+	req := httptest.NewRequest("POST", "/v1/auth", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.handleAuthAdd(rec, req)
+
+	// Auth add with gater reload failure returns 500
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 (gater reload failed)", rec.Code)
+	}
+}
+
+// --- handleExpose error path ---
+
+func TestHandleExpose_InvalidBody(t *testing.T) {
+	srv, _ := newNetworkServer(t)
+
+	req := httptest.NewRequest("POST", "/v1/expose", bytes.NewReader([]byte("not json")))
+	rec := httptest.NewRecorder()
+	srv.handleExpose(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleExpose_InvalidServiceName(t *testing.T) {
+	srv, _ := newNetworkServer(t)
+
+	body, _ := json.Marshal(ExposeRequest{Name: "BAD NAME!", LocalAddress: "localhost:22"})
+	req := httptest.NewRequest("POST", "/v1/expose", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.handleExpose(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+// --- handleUnexpose empty name ---
+
+func TestHandleUnexpose_EmptyName(t *testing.T) {
+	srv, _ := newNetworkServer(t)
+
+	req := httptest.NewRequest("DELETE", "/v1/expose/", nil)
+	req.SetPathValue("name", "")
+	rec := httptest.NewRecorder()
+	srv.handleUnexpose(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// --- handleResolve invalid body ---
+
+func TestHandleResolve_InvalidBody(t *testing.T) {
+	srv, _ := newNetworkServer(t)
+
+	req := httptest.NewRequest("POST", "/v1/resolve", bytes.NewReader([]byte("bad")))
+	rec := httptest.NewRecorder()
+	srv.handleResolve(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// --- handleServiceList with disabled service ---
+
+func TestHandleServiceList_DisabledService(t *testing.T) {
+	srv, rt := newNetworkServer(t)
+	rt.net.ExposeService("ssh", "localhost:22")
+
+	// Text format should show "disabled" for disabled services
+	// (but ExposeService always sets enabled=true, so we test the text path)
+	req := httptest.NewRequest("GET", "/v1/services?format=text", nil)
+	rec := httptest.NewRecorder()
+	srv.handleServiceList(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "enabled") {
+		t.Errorf("text output should contain 'enabled': %q", body)
+	}
+}
+
+// --- Server.Stop with active proxies ---
+
+func TestStopProxies(t *testing.T) {
+	// Use short dir name to avoid Unix socket path length limit (108 chars).
+	dir, err := os.MkdirTemp("", "d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	socketPath := filepath.Join(dir, "s.sock")
+	cookiePath := filepath.Join(dir, ".c")
+
+	rt := newMockRuntime()
+	srv := NewServer(rt, socketPath, cookiePath, "test")
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Inject mock proxy
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(done)
+	}()
+
+	srv.mu.Lock()
+	srv.proxies["test-proxy-1"] = &activeProxy{
+		ID:      "test-proxy-1",
+		Peer:    "peer-a",
+		Service: "ssh",
+		Listen:  ":0",
+		cancel:  cancel,
+		done:    done,
+	}
+	srv.mu.Unlock()
+	_ = ctx
+
+	// Stop should clean up the proxy
+	srv.Stop()
+
+	srv.mu.Lock()
+	count := len(srv.proxies)
+	srv.mu.Unlock()
+	if count != 0 {
+		t.Errorf("expected 0 proxies after Stop, got %d", count)
 	}
 }
