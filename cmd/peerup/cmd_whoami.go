@@ -3,7 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/satindergrewal/peer-up/internal/config"
@@ -11,24 +12,35 @@ import (
 )
 
 func runWhoami(args []string) {
-	fs := flag.NewFlagSet("whoami", flag.ExitOnError)
+	if err := doWhoami(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func doWhoami(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("whoami", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	cfgFile, err := config.FindConfigFile(*configFlag)
 	if err != nil {
-		log.Fatalf("Config error: %v", err)
+		return fmt.Errorf("config error: %w", err)
 	}
 	cfg, err := config.LoadNodeConfig(cfgFile)
 	if err != nil {
-		log.Fatalf("Config error: %v", err)
+		return fmt.Errorf("config error: %w", err)
 	}
 	config.ResolveConfigPaths(cfg, filepath.Dir(cfgFile))
 
 	peerID, err := p2pnet.PeerIDFromKeyFile(cfg.Identity.KeyFile)
 	if err != nil {
-		log.Fatalf("Failed to load identity: %v", err)
+		return fmt.Errorf("failed to load identity: %w", err)
 	}
 
-	fmt.Println(peerID.String())
+	fmt.Fprintln(stdout, peerID.String())
+	return nil
 }

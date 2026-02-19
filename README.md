@@ -72,7 +72,7 @@ peerup proxy home ssh 2222
 ssh -p 2222 user@localhost
 ```
 
-> **Relay server**: Both machines connect through a relay for NAT traversal. See [relay-server/README.md](relay-server/README.md) for deploying your own. A shared relay is used by default during development.
+> **Relay server**: Both machines connect through a relay for NAT traversal. See [relay-server/README.md](relay-server/README.md) for deploying your own. Run `peerup relay serve` to start a relay. A shared relay is used by default during development.
 
 ## The Problem
 
@@ -259,7 +259,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now peerup
 ```
 
-Both `peerup daemon` and `relay-server` send `sd_notify` signals (`READY=1`, `WATCHDOG=1`, `STOPPING=1`).
+Both `peerup daemon` and `peerup relay serve` send `sd_notify` signals (`READY=1`, `WATCHDOG=1`, `STOPPING=1`).
 
 ### macOS (launchd)
 
@@ -280,9 +280,6 @@ go build -ldflags "-X main.version=0.1.0 \
   -X main.commit=$(git rev-parse --short HEAD) \
   -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o peerup ./cmd/peerup
-
-# Build relay server
-go build -o relay-server/relay-server ./cmd/relay-server
 
 # Cross-compile for Linux
 GOOS=linux GOARCH=amd64 go build -o peerup ./cmd/peerup
@@ -331,7 +328,8 @@ cmd/
 │   ├── cmd_invite.go          # Generate invite code + QR + P2P handshake
 │   ├── cmd_join.go            # Accept invite, auto-configure
 │   ├── cmd_auth.go            # Auth add/list/remove/validate
-│   ├── cmd_relay.go           # Relay add/list/remove
+│   ├── cmd_relay.go           # Relay add/list/remove (client config)
+│   ├── cmd_relay_serve.go     # Relay server: serve/authorize/info/config
 │   ├── cmd_config.go          # Config validate/show/rollback/apply/confirm
 │   ├── cmd_service.go         # Service add/remove/enable/disable/list
 │   ├── cmd_status.go          # Local status display
@@ -340,8 +338,6 @@ cmd/
 │   ├── config_template.go     # Config YAML template
 │   ├── flag_helpers.go        # CLI flag reordering for natural usage
 │   └── relay_input.go         # Flexible relay address parsing
-└── relay-server/              # Circuit relay v2 server
-    └── main.go
 pkg/p2pnet/                    # Importable P2P networking library
 ├── network.go                 # Core: host setup, relay, DHT, name resolution
 ├── service.go                 # Service registry

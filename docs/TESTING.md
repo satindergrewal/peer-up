@@ -35,11 +35,8 @@ sudo systemctl start sshd
 ### 3. Build peerup
 
 ```bash
-# Build peerup (single binary for everything)
+# Build peerup (single binary — handles both client and relay server)
 go build -o peerup ./cmd/peerup
-
-# Build relay server (if deploying your own)
-go build -o relay-server/relay-server ./cmd/relay-server
 ```
 
 ---
@@ -57,8 +54,8 @@ cp ../configs/relay-server.sample.yaml relay-server.yaml
 
 # Build from project root
 cd ..
-go build -o relay-server/relay-server ./cmd/relay-server
-./relay-server/relay-server
+go build -o relay-server/peerup ./cmd/peerup
+cd relay-server && ./peerup relay serve
 ```
 
 **Expected output:**
@@ -391,7 +388,6 @@ go test -race ./internal/config/
 go test -race ./internal/auth/
 go test -race ./internal/invite/
 go test -race ./cmd/peerup/
-go test -race ./cmd/relay-server/
 
 # Verbose output (see individual test names)
 go test -race -v ./internal/auth/

@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 
 func TestRelayHealthy(t *testing.T) {
 	// Verify relay is running and config is valid.
-	out, _, err := dockerExec("relay", "sh", "-c", "cd /data && relay-server config validate")
+	out, _, err := dockerExec("relay", "sh", "-c", "cd /data && peerup relay config validate")
 	if err != nil {
 		t.Fatalf("relay config validate failed: %v\noutput: %s", err, out)
 	}
@@ -96,9 +96,9 @@ func TestRelayHealthy(t *testing.T) {
 	}
 
 	// Verify relay process is actually running.
-	ps, _, err := dockerExec("relay", "sh", "-c", "ps aux | grep relay-server | grep -v grep")
-	if err != nil || !strings.Contains(ps, "relay-server") {
-		t.Fatalf("relay-server process not running in container.\nps output: %s", ps)
+	ps, _, err := dockerExec("relay", "sh", "-c", "ps aux | grep 'peerup relay serve' | grep -v grep")
+	if err != nil || !strings.Contains(ps, "peerup") {
+		t.Fatalf("peerup relay serve process not running in container.\nps output: %s", ps)
 	}
 }
 
@@ -367,8 +367,8 @@ func composeDown() {
 }
 
 func composeLogs() {
-	// Dump relay process logs (relay-server runs inside a sleeping container).
-	fmt.Fprintln(os.Stderr, "=== relay-server logs ===")
+	// Dump relay process logs (peerup relay serve runs inside a sleeping container).
+	fmt.Fprintln(os.Stderr, "=== relay server logs ===")
 	out, _, _ := dockerExec("relay", "cat", "/tmp/relay-stdout.txt")
 	fmt.Fprintln(os.Stderr, out)
 
@@ -432,12 +432,12 @@ func setupRelay() error {
 		return fmt.Errorf("failed to write relay authorized_keys: %w", err)
 	}
 
-	// Start relay-server in background inside the container.
-	// Container is sleeping; we launch relay-server as a background process.
+	// Start relay server in background inside the container.
+	// Container is sleeping; we launch peerup relay serve as a background process.
 	_, _, err := dockerExec("relay", "sh", "-c",
-		"nohup relay-server > /tmp/relay-stdout.txt 2>&1 &")
+		"cd /data && nohup peerup relay serve > /tmp/relay-stdout.txt 2>&1 &")
 	if err != nil {
-		return fmt.Errorf("failed to start relay-server: %w", err)
+		return fmt.Errorf("failed to start relay server: %w", err)
 	}
 
 	fmt.Println("Waiting for relay to start...")

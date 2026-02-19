@@ -16,8 +16,8 @@ Group=YOUR_USERNAME
 # Change this to your actual path:
 WorkingDirectory=/home/YOUR_USERNAME/peer-up/relay-server
 
-# Binary path (same directory)
-ExecStart=/home/YOUR_USERNAME/peer-up/relay-server/relay-server
+# Single binary — relay mode
+ExecStart=/home/YOUR_USERNAME/peer-up/relay-server/peerup relay serve
 
 Restart=always
 RestartSec=5
@@ -44,7 +44,7 @@ ReadWritePaths=/home/YOUR_USERNAME/peer-up/relay-server
 # Logging via journald (configure rotation in /etc/systemd/journald.conf)
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=relay-server
+SyslogIdentifier=peerup-relay
 
 [Install]
 WantedBy=multi-user.target

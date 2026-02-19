@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -59,21 +59,23 @@ func printServiceUsage() {
 }
 
 func runServiceAdd(args []string) {
-	args = reorderArgs(args, nil)
+	if err := doServiceAdd(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	fs := flag.NewFlagSet("service add", flag.ExitOnError)
+func doServiceAdd(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("service add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
 	protocolFlag := fs.String("protocol", "", "custom protocol ID (optional)")
-	fs.Parse(args)
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	if fs.NArg() < 2 {
-		fmt.Println("Usage: peerup service add <name> <local-address> [--protocol <id>]")
-		fmt.Println()
-		fmt.Println("Examples:")
-		fmt.Println("  peerup service add ssh localhost:22")
-		fmt.Println("  peerup service add ollama localhost:11434")
-		fmt.Println("  peerup service add web localhost:8080 --protocol my-web")
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup service add <name> <local-address> [--protocol <id>]")
 	}
 
 	name := fs.Arg(0)
@@ -81,21 +83,24 @@ func runServiceAdd(args []string) {
 
 	// Validate service name (DNS-label format)
 	if err := validate.ServiceName(name); err != nil {
-		log.Fatalf("Invalid service name: %v", err)
+		return fmt.Errorf("invalid service name: %w", err)
 	}
 
 	// Validate address has host:port
 	if _, _, err := net.SplitHostPort(address); err != nil {
-		log.Fatalf("Invalid address %q: must be host:port (e.g., localhost:22)\n  Error: %v", address, err)
+		return fmt.Errorf("invalid address %q: must be host:port (e.g., localhost:22)\n  Error: %v", address, err)
 	}
 
-	cfgFile, cfg := resolveConfigFile(*configFlag)
+	cfgFile, cfg, err := resolveConfigFileErr(*configFlag)
+	if err != nil {
+		return err
+	}
 
 	// Check for duplicate
 	if cfg.Services != nil {
 		if _, exists := cfg.Services[name]; exists {
 			termcolor.Yellow("Service already configured: %s", name)
-			return
+			return nil
 		}
 	}
 
@@ -110,7 +115,7 @@ func runServiceAdd(args []string) {
 	// Read config file and insert service
 	data, err := os.ReadFile(cfgFile)
 	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
+		return fmt.Errorf("failed to read config: %w", err)
 	}
 
 	content := string(data)
@@ -167,29 +172,43 @@ func runServiceAdd(args []string) {
 	}
 
 	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
-		log.Fatalf("Failed to write config: %v", err)
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	termcolor.Green("Added service: %s -> %s", name, address)
-	fmt.Printf("Config: %s\n", cfgFile)
-	fmt.Println()
-	fmt.Println("Restart 'peerup daemon' to apply.")
+	fmt.Fprintf(stdout, "Config: %s\n", cfgFile)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Restart 'peerup daemon' to apply.")
+	return nil
 }
 
 func runServiceList(args []string) {
-	fs := flag.NewFlagSet("service list", flag.ExitOnError)
+	if err := doServiceList(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func doServiceList(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("service list", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
-	fs.Parse(reorderArgs(args, nil))
-
-	cfgFile, cfg := resolveConfigFile(*configFlag)
-
-	if cfg.Services == nil || len(cfg.Services) == 0 {
-		fmt.Println("No services configured.")
-		fmt.Printf("Config: %s\n", cfgFile)
-		return
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
 	}
 
-	fmt.Printf("Services (%d):\n\n", len(cfg.Services))
+	cfgFile, cfg, err := resolveConfigFileErr(*configFlag)
+	if err != nil {
+		return err
+	}
+
+	if cfg.Services == nil || len(cfg.Services) == 0 {
+		fmt.Fprintln(stdout, "No services configured.")
+		fmt.Fprintf(stdout, "Config: %s\n", cfgFile)
+		return nil
+	}
+
+	fmt.Fprintf(stdout, "Services (%d):\n\n", len(cfg.Services))
 	for name, svc := range cfg.Services {
 		state := "enabled"
 		if !svc.Enabled {
@@ -199,37 +218,47 @@ func runServiceList(args []string) {
 		if svc.Protocol != "" {
 			proto = fmt.Sprintf("  protocol: %s", svc.Protocol)
 		}
-		fmt.Printf("  %-12s -> %-20s (%s)%s\n", name, svc.LocalAddress, state, proto)
+		fmt.Fprintf(stdout, "  %-12s -> %-20s (%s)%s\n", name, svc.LocalAddress, state, proto)
 	}
-	fmt.Printf("\nConfig: %s\n", cfgFile)
+	fmt.Fprintf(stdout, "\nConfig: %s\n", cfgFile)
+	return nil
 }
 
 func runServiceSetEnabled(args []string, enabled bool) {
-	args = reorderArgs(args, nil)
+	if err := doServiceSetEnabled(args, enabled, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	fs := flag.NewFlagSet("service enable/disable", flag.ExitOnError)
+func doServiceSetEnabled(args []string, enabled bool, stdout io.Writer) error {
+	fs := flag.NewFlagSet("service enable/disable", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
-	fs.Parse(args)
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	if fs.NArg() != 1 {
 		if enabled {
-			fmt.Println("Usage: peerup service enable <name>")
-		} else {
-			fmt.Println("Usage: peerup service disable <name>")
+			return fmt.Errorf("usage: peerup service enable <name>")
 		}
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup service disable <name>")
 	}
 
 	name := fs.Arg(0)
-	cfgFile, cfg := resolveConfigFile(*configFlag)
+	cfgFile, cfg, err := resolveConfigFileErr(*configFlag)
+	if err != nil {
+		return err
+	}
 
 	// Check it exists
 	if cfg.Services == nil {
-		log.Fatalf("Service not found: %s", name)
+		return fmt.Errorf("service not found: %s", name)
 	}
 	svc, exists := cfg.Services[name]
 	if !exists {
-		log.Fatalf("Service not found: %s", name)
+		return fmt.Errorf("service not found: %s", name)
 	}
 
 	// Already in desired state?
@@ -239,13 +268,13 @@ func runServiceSetEnabled(args []string, enabled bool) {
 			state = "disabled"
 		}
 		termcolor.Yellow("Service %s is already %s", name, state)
-		return
+		return nil
 	}
 
 	// Read config and flip the enabled field
 	data, err := os.ReadFile(cfgFile)
 	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
+		return fmt.Errorf("failed to read config: %w", err)
 	}
 
 	oldVal := "enabled: true"
@@ -299,11 +328,11 @@ func runServiceSetEnabled(args []string, enabled bool) {
 	}
 
 	if !replaced {
-		log.Fatalf("Could not find enabled field for service %q.\nPlease edit manually: %s", name, cfgFile)
+		return fmt.Errorf("could not find enabled field for service %q.\nPlease edit manually: %s", name, cfgFile)
 	}
 
 	if err := os.WriteFile(cfgFile, []byte(strings.Join(result, "\n")), 0600); err != nil {
-		log.Fatalf("Failed to write config: %v", err)
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	if enabled {
@@ -311,38 +340,49 @@ func runServiceSetEnabled(args []string, enabled bool) {
 	} else {
 		termcolor.Yellow("Disabled service: %s", name)
 	}
-	fmt.Printf("Config: %s\n", cfgFile)
-	fmt.Println()
-	fmt.Println("Restart 'peerup daemon' to apply.")
+	fmt.Fprintf(stdout, "Config: %s\n", cfgFile)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Restart 'peerup daemon' to apply.")
+	return nil
 }
 
 func runServiceRemove(args []string) {
-	args = reorderArgs(args, nil)
+	if err := doServiceRemove(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	fs := flag.NewFlagSet("service remove", flag.ExitOnError)
+func doServiceRemove(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("service remove", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
-	fs.Parse(args)
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	if fs.NArg() != 1 {
-		fmt.Println("Usage: peerup service remove <name>")
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup service remove <name>")
 	}
 
 	name := fs.Arg(0)
-	cfgFile, cfg := resolveConfigFile(*configFlag)
+	cfgFile, cfg, err := resolveConfigFileErr(*configFlag)
+	if err != nil {
+		return err
+	}
 
 	// Check it exists
 	if cfg.Services == nil {
-		log.Fatalf("Service not found: %s", name)
+		return fmt.Errorf("service not found: %s", name)
 	}
 	if _, exists := cfg.Services[name]; !exists {
-		log.Fatalf("Service not found: %s", name)
+		return fmt.Errorf("service not found: %s", name)
 	}
 
 	// Read config and remove the service block
 	data, err := os.ReadFile(cfgFile)
 	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
+		return fmt.Errorf("failed to read config: %w", err)
 	}
 
 	lines := strings.Split(string(data), "\n")
@@ -392,7 +432,7 @@ func runServiceRemove(args []string) {
 	}
 
 	if !removed {
-		log.Fatalf("Could not find service %q in config file.\nPlease remove manually from: %s", name, cfgFile)
+		return fmt.Errorf("could not find service %q in config file.\nPlease remove manually from: %s", name, cfgFile)
 	}
 
 	// Check if services section is now empty — replace with "services: {}"
@@ -409,11 +449,12 @@ func runServiceRemove(args []string) {
 	}
 
 	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
-		log.Fatalf("Failed to write config: %v", err)
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	termcolor.Green("Removed service: %s", name)
-	fmt.Printf("Config: %s\n", cfgFile)
-	fmt.Println()
-	fmt.Println("Restart 'peerup daemon' to apply.")
+	fmt.Fprintf(stdout, "Config: %s\n", cfgFile)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Restart 'peerup daemon' to apply.")
+	return nil
 }
