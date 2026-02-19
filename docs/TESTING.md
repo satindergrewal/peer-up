@@ -448,6 +448,34 @@ benchstat old.txt new.txt
 
 ---
 
+### Coverage-Instrumented Docker Tests
+
+Docker integration tests exercise the actual compiled binary end-to-end (relay server, invite/join flow, ping through circuit relay). The binary is built with `go build -cover`, so coverage data is captured when processes exit.
+
+```bash
+# Run Docker tests with coverage collection
+mkdir -p coverage/integration
+PEERUP_COVDIR="$PWD/coverage/integration" \
+  go test -tags integration -v -timeout 5m ./test/docker/
+
+# Run unit tests with binary-format coverage (for merging)
+mkdir -p coverage/unit
+go test -cover ./... -args -test.gocoverdir="$PWD/coverage/unit"
+
+# Merge unit + Docker coverage
+mkdir -p coverage/merged
+go tool covdata merge -i=coverage/unit,coverage/integration -o=coverage/merged
+
+# Generate combined report
+go tool covdata textfmt -i=coverage/merged -o=coverage/combined.out
+go tool cover -func=coverage/combined.out | tail -1
+
+# HTML visualization
+go tool cover -html=coverage/combined.out -o=coverage/report.html
+```
+
+This captures code paths that unit tests cannot reach: `runRelayServe`, `runDaemon`, `runInvite`, `runJoin`, `runPing` through real P2P circuits.
+
 ### CI Pipeline
 
 GitHub Actions runs on every push to `main` and `dev/next-iteration`. All commands run from the project root against the single Go module:
@@ -455,6 +483,7 @@ GitHub Actions runs on every push to `main` and `dev/next-iteration`. All comman
 1. **Build** — all packages compile (`go build ./...`)
 2. **Vet** — static analysis (`go vet ./...`)
 3. **Test** — all tests with race detection (`go test -race -count=1 ./...`)
+4. **Coverage** — unit + Docker integration coverage merged and reported
 
 Config: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 
@@ -468,4 +497,4 @@ For benchmarks that previously used `log.New(io.Discard, ...)` to suppress loggi
 
 ---
 
-**Last Updated**: 2026-02-16
+**Last Updated**: 2026-02-19

@@ -75,6 +75,9 @@ func TestMain(m *testing.M) {
 	// Run tests.
 	code := m.Run()
 
+	// Collect coverage data from containers before teardown.
+	collectDockerCoverage()
+
 	// Tear down.
 	composeDown()
 	os.Exit(code)
@@ -312,6 +315,62 @@ func TestPingThroughRelay(t *testing.T) {
 	}
 
 	t.Log("Ping through relay verified successfully.")
+}
+
+// ─── Coverage Collection ─────────────────────────────────────────────────────
+
+// collectDockerCoverage gracefully stops all peerup processes inside Docker
+// containers so they flush coverage data (GOCOVERDIR=/covdata), then copies
+// the data to a host directory for merging with unit test coverage.
+//
+// Set PEERUP_COVDIR to enable collection. Example:
+//
+//	PEERUP_COVDIR=./coverage/integration go test -tags integration ./test/docker/
+//
+// Then merge with unit coverage:
+//
+//	go test -cover ./... -args -test.gocoverdir=./coverage/unit
+//	go tool covdata merge -i=./coverage/unit,./coverage/integration -o=./coverage/merged
+//	go tool covdata textfmt -i=./coverage/merged -o=./coverage/combined.out
+//	go tool cover -func=./coverage/combined.out | tail -1
+func collectDockerCoverage() {
+	covDir := os.Getenv("PEERUP_COVDIR")
+	if covDir == "" {
+		fmt.Println("PEERUP_COVDIR not set, skipping coverage collection.")
+		return
+	}
+
+	if err := os.MkdirAll(covDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create coverage dir %s: %v\n", covDir, err)
+		return
+	}
+
+	fmt.Println("=== Collecting Docker coverage data ===")
+
+	containers := []string{"relay", "node-a", "node-b"}
+
+	// Send SIGTERM to all peerup processes so they flush coverage on exit.
+	// The container PID 1 is "sleep infinity", so we target peerup specifically.
+	for _, c := range containers {
+		dockerExec(c, "sh", "-c", "pkill -TERM peerup 2>/dev/null || true")
+	}
+
+	// Wait for processes to exit and flush coverage.
+	time.Sleep(3 * time.Second)
+
+	// Copy coverage data from each container.
+	for _, c := range containers {
+		cmd := exec.Command("docker", "cp", c+":/covdata/.", covDir+"/")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "docker cp %s:/covdata failed: %v (%s)\n", c, err, out)
+		} else {
+			fmt.Printf("Collected coverage from %s\n", c)
+		}
+	}
+
+	// List what we collected.
+	entries, _ := os.ReadDir(covDir)
+	fmt.Printf("Coverage files collected: %d\n", len(entries))
 }
 
 // ─── Docker Compose Helpers ───────────────────────────────────────────────────
