@@ -10,10 +10,10 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
 
@@ -25,3 +25,43 @@ jobs:
 
       - name: Test
         run: go test -race -count=1 ./...
+
+      - name: Unit Coverage (binary format for merging)
+        run: |
+          mkdir -p coverage/unit
+          go test -cover ./... -args -test.gocoverdir="$PWD/coverage/unit"
+
+  docker-integration:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Docker Integration Tests with Coverage
+        run: |
+          mkdir -p coverage/integration
+          PEERUP_COVDIR="$PWD/coverage/integration" \
+            go test -tags integration -v -timeout 5m ./test/docker/
+        env:
+          DOCKER_BUILDKIT: "1"
+
+      - name: Unit Coverage (for merging)
+        run: |
+          mkdir -p coverage/unit
+          go test -cover ./... -args -test.gocoverdir="$PWD/coverage/unit"
+
+      - name: Merge and Report Coverage
+        run: |
+          mkdir -p coverage/merged
+          go tool covdata merge -i=coverage/unit,coverage/integration -o=coverage/merged
+          echo "=== Combined coverage (unit + Docker integration) ==="
+          go tool covdata percent -i=coverage/merged
+          go tool covdata textfmt -i=coverage/merged -o=coverage/combined.out
+          echo ""
+          echo "=== Total ==="
+          go tool cover -func=coverage/combined.out | tail -1

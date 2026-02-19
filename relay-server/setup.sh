@@ -7,11 +7,11 @@
 #   bash setup.sh --check      # Health check only (no changes)
 #   bash setup.sh --uninstall  # Remove service, firewall rules, tuning
 #
-# Relay server subcommands (via the Go binary):
-#   ./relay-server info                          # Show peer ID, multiaddrs, QR code
-#   ./relay-server authorize <peer-id> [comment] # Allow a peer
-#   ./relay-server deauthorize <peer-id>         # Remove a peer
-#   ./relay-server list-peers                    # List authorized peers
+# Relay server subcommands (via the peerup binary):
+#   ./peerup relay info                          # Show peer ID, multiaddrs, QR code
+#   ./peerup relay authorize <peer-id> [comment] # Allow a peer
+#   ./peerup relay deauthorize <peer-id>         # Remove a peer
+#   ./peerup relay list-peers                    # List authorized peers
 #
 # If run as root:
 #   - --check and --uninstall work directly as root
@@ -25,7 +25,7 @@
 #   3. Tunes network buffers for QUIC
 #   4. Configures journald log rotation
 #   5. Opens firewall ports (7777 TCP/UDP)
-#   6. Builds the relay-server binary
+#   6. Builds the peerup binary
 #   7. Sets correct file permissions
 #   8. Installs and starts the systemd service
 #   + Runs health check
@@ -65,7 +65,7 @@ run_sudo() {
 find_available_port() {
     for PORT in "$@"; do
         PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
-        if [ -z "$PORT_OWNER" ] || [ "$PORT_OWNER" = "relay-server" ]; then
+        if [ -z "$PORT_OWNER" ] || [ "$PORT_OWNER" = "peerup" ]; then
             echo "$PORT"
             return 0
         fi
@@ -376,22 +376,22 @@ run_check() {
 
     # Get authoritative application info from the Go binary (not from logs or YAML grep)
     RELAY_INFO=""
-    if [ -x "$RELAY_DIR/relay-server" ] && [ -f "$RELAY_DIR/relay-server.yaml" ]; then
-        RELAY_INFO=$(cd "$RELAY_DIR" && ./relay-server info 2>/dev/null) || true
+    if [ -x "$RELAY_DIR/peerup" ] && [ -f "$RELAY_DIR/relay-server.yaml" ]; then
+        RELAY_INFO=$(cd "$RELAY_DIR" && ./peerup relay info 2>/dev/null) || true
     fi
 
     # --- Binary ---
     echo "Binary:"
-    if [ -f "$RELAY_DIR/relay-server" ]; then
-        check_pass "relay-server binary exists"
+    if [ -f "$RELAY_DIR/peerup" ]; then
+        check_pass "peerup binary exists"
     else
-        check_fail "relay-server binary not found — run: go build -o relay-server/relay-server ./cmd/relay-server"
+        check_fail "peerup binary not found — run: go build -o relay-server/peerup ./cmd/peerup"
     fi
 
-    if [ -x "$RELAY_DIR/relay-server" ]; then
-        check_pass "relay-server is executable"
-    elif [ -f "$RELAY_DIR/relay-server" ]; then
-        check_fail "relay-server is not executable — run: chmod 700 relay-server"
+    if [ -x "$RELAY_DIR/peerup" ]; then
+        check_pass "peerup is executable"
+    elif [ -f "$RELAY_DIR/peerup" ]; then
+        check_fail "peerup is not executable — run: chmod 700 peerup"
     fi
     echo
 
@@ -409,7 +409,7 @@ run_check() {
                 echo "         Fix: set enable_connection_gating: true in relay-server.yaml"
             fi
         else
-            check_warn "Cannot verify connection gating (build relay-server first)"
+            check_warn "Cannot verify connection gating (build peerup first)"
         fi
 
         # Check config permissions
@@ -471,28 +471,28 @@ run_check() {
 
     # --- Systemd service ---
     echo "Service:"
-    if systemctl is-enabled --quiet relay-server 2>/dev/null; then
-        check_pass "relay-server service is enabled (starts on boot)"
+    if systemctl is-enabled --quiet peerup-relay 2>/dev/null; then
+        check_pass "peerup-relay service is enabled (starts on boot)"
     else
-        check_warn "relay-server service is not enabled"
-        echo "         Fix: sudo systemctl enable relay-server"
+        check_warn "peerup-relay service is not enabled"
+        echo "         Fix: sudo systemctl enable peerup-relay"
     fi
 
-    if systemctl is-active --quiet relay-server 2>/dev/null; then
-        check_pass "relay-server service is running"
+    if systemctl is-active --quiet peerup-relay 2>/dev/null; then
+        check_pass "peerup-relay service is running"
         # Check how long it's been running
-        UPTIME=$(systemctl show relay-server --property=ActiveEnterTimestamp --value 2>/dev/null)
+        UPTIME=$(systemctl show peerup-relay --property=ActiveEnterTimestamp --value 2>/dev/null)
         if [ -n "$UPTIME" ]; then
             echo "         Started: $UPTIME"
         fi
     else
-        check_fail "relay-server service is NOT running"
-        echo "         Fix: sudo systemctl start relay-server"
-        echo "         Logs: sudo journalctl -u relay-server -n 20"
+        check_fail "peerup-relay service is NOT running"
+        echo "         Fix: sudo systemctl start peerup-relay"
+        echo "         Logs: sudo journalctl -u peerup-relay -n 20"
     fi
 
     # Check service user
-    SVC_USER=$(systemctl show relay-server --property=User --value 2>/dev/null)
+    SVC_USER=$(systemctl show peerup-relay --property=User --value 2>/dev/null)
     if [ -n "$SVC_USER" ] && [ "$SVC_USER" != "root" ]; then
         check_pass "Service runs as non-root user: $SVC_USER"
     elif [ "$SVC_USER" = "root" ]; then
@@ -505,7 +505,7 @@ run_check() {
     # Check if port 7777 is listening
     if ss -tlnp 2>/dev/null | grep -q ':7777 ' || netstat -tlnp 2>/dev/null | grep -q ':7777 '; then
         check_pass "Port 7777 TCP is listening"
-    elif systemctl is-active --quiet relay-server 2>/dev/null; then
+    elif systemctl is-active --quiet peerup-relay 2>/dev/null; then
         check_warn "Port 7777 TCP not detected (may need a moment to start)"
     else
         check_warn "Port 7777 TCP not listening (service not running)"
@@ -515,7 +515,7 @@ run_check() {
     WS_PORT=$(grep -v '^\s*#' "$RELAY_DIR/relay-server.yaml" 2>/dev/null | grep -oP 'tcp/\K[0-9]+(?=/ws)' | head -1)
     if [ -n "$WS_PORT" ]; then
         WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
-        if [ "$WS_PORT_OWNER" = "relay-server" ]; then
+        if [ "$WS_PORT_OWNER" = "peerup" ]; then
             check_pass "Port $WS_PORT TCP is listening (WebSocket anti-censorship)"
         elif [ -n "$WS_PORT_OWNER" ]; then
             check_fail "Port $WS_PORT is used by '$WS_PORT_OWNER' — conflicts with WebSocket transport"
@@ -523,11 +523,11 @@ run_check() {
             echo "         Options:"
             echo "           a) Stop $WS_PORT_OWNER: sudo systemctl stop $WS_PORT_OWNER"
             if [ -n "$ALT_PORT" ]; then
-                echo "           b) Switch port: change tcp/$WS_PORT/ws to tcp/$ALT_PORT/ws in relay-server.yaml (port $ALT_PORT is free)"
+                echo "           b) Switch port: change tcp/$WS_PORT/ws to tcp/$ALT_PORT/ws in relay-server.yaml ($ALT_PORT is free)"
             else
                 echo "           b) Pick a free port manually and update relay-server.yaml"
             fi
-        elif systemctl is-active --quiet relay-server 2>/dev/null; then
+        elif systemctl is-active --quiet peerup-relay 2>/dev/null; then
             check_warn "Port $WS_PORT TCP not detected (WebSocket configured but not listening)"
         fi
     fi
@@ -618,14 +618,14 @@ run_check() {
             check_pass "Relay Peer ID: $PEER_ID"
         fi
         echo
-        # Print multiaddrs, QR code, and quick setup from relay-server info
+        # Print multiaddrs, QR code, and quick setup from peerup relay info
         echo "$RELAY_INFO" | awk '/^Multiaddrs:/,0' | while IFS= read -r line; do
             echo "  $line"
         done
-    elif [ -x "$RELAY_DIR/relay-server" ]; then
+    elif [ -x "$RELAY_DIR/peerup" ]; then
         check_warn "Cannot retrieve relay info (check relay-server.yaml and identity key)"
     else
-        check_warn "Cannot determine Peer ID (build relay-server first: go build -o relay-server/relay-server ./cmd/relay-server)"
+        check_warn "Cannot determine Peer ID (build peerup first: go build -o relay-server/peerup ./cmd/peerup)"
     fi
     echo
 
@@ -655,12 +655,12 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "help" ]; then
     echo "  --uninstall    Remove service, firewall rules, and system tuning"
     echo "  --help         Show this help message"
     echo
-    echo "Relay server commands (via the Go binary):"
-    echo "  ./relay-server                                Start the relay"
-    echo "  ./relay-server info                           Show peer ID, multiaddrs, QR code"
-    echo "  ./relay-server authorize <peer-id> [comment]  Allow a peer"
-    echo "  ./relay-server deauthorize <peer-id>          Remove a peer"
-    echo "  ./relay-server list-peers                     List authorized peers"
+    echo "Relay server commands (via the peerup binary):"
+    echo "  ./peerup relay serve                          Start the relay"
+    echo "  ./peerup relay info                           Show peer ID, multiaddrs, QR code"
+    echo "  ./peerup relay authorize <peer-id> [comment]  Allow a peer"
+    echo "  ./peerup relay deauthorize <peer-id>          Remove a peer"
+    echo "  ./peerup relay list-peers                     List authorized peers"
     exit 0
 fi
 
@@ -692,16 +692,16 @@ if [ "$1" = "--uninstall" ]; then
 
     # --- 1. Stop and remove systemd service ---
     echo "[1/4] Removing systemd service..."
-    if systemctl is-active --quiet relay-server 2>/dev/null; then
-        run_sudo systemctl stop relay-server
+    if systemctl is-active --quiet peerup-relay 2>/dev/null; then
+        run_sudo systemctl stop peerup-relay
         echo "  Service stopped"
     fi
-    if systemctl is-enabled --quiet relay-server 2>/dev/null; then
-        run_sudo systemctl disable relay-server
+    if systemctl is-enabled --quiet peerup-relay 2>/dev/null; then
+        run_sudo systemctl disable peerup-relay
         echo "  Service disabled"
     fi
-    if [ -f /etc/systemd/system/relay-server.service ]; then
-        run_sudo rm /etc/systemd/system/relay-server.service
+    if [ -f /etc/systemd/system/peerup-relay.service ]; then
+        run_sudo rm /etc/systemd/system/peerup-relay.service
         run_sudo systemctl daemon-reload
         echo "  Service file removed, daemon reloaded"
     else
@@ -758,7 +758,7 @@ if [ "$1" = "--uninstall" ]; then
     echo "=== Uninstall complete ==="
     echo
     echo "The following were left untouched (delete manually if desired):"
-    echo "  $RELAY_DIR/relay-server          (binary)"
+    echo "  $RELAY_DIR/peerup                (binary)"
     echo "  $RELAY_DIR/relay-server.yaml     (config)"
     echo "  $RELAY_DIR/relay_node.key        (identity key)"
     echo "  $RELAY_DIR/relay_authorized_keys (peer allowlist)"
@@ -895,7 +895,7 @@ if command -v ufw &> /dev/null; then
         if [ -n "$WS_PORT" ]; then
             # Check if the port is already in use by another service
             WS_PORT_OWNER=$(ss -tlnp 2>/dev/null | grep ":${WS_PORT} " | grep -oP 'users:\(\("\K[^"]+' | head -1)
-            if [ -n "$WS_PORT_OWNER" ] && [ "$WS_PORT_OWNER" != "relay-server" ]; then
+            if [ -n "$WS_PORT_OWNER" ] && [ "$WS_PORT_OWNER" != "peerup" ]; then
                 echo
                 echo "  [WARN] Port $WS_PORT is already in use by: $WS_PORT_OWNER"
                 echo "         WebSocket transport will fail to bind on this port."
@@ -916,7 +916,7 @@ if command -v ufw &> /dev/null; then
                         1)
                             run_sudo ufw allow "${WS_PORT}/tcp" comment 'peer-up relay WebSocket' > /dev/null 2>&1 || true
                             echo "  UFW: port $WS_PORT TCP open (WebSocket)"
-                            echo "  Note: relay-server won't bind until $WS_PORT_OWNER releases port $WS_PORT"
+                            echo "  Note: peerup relay won't bind until $WS_PORT_OWNER releases port $WS_PORT"
                             ;;
                         2)
                             if [ -n "$ALT_PORT" ]; then
@@ -937,7 +937,7 @@ if command -v ufw &> /dev/null; then
                     # Non-interactive (piped/scripted) — open the configured port and warn
                     run_sudo ufw allow "${WS_PORT}/tcp" comment 'peer-up relay WebSocket' > /dev/null 2>&1 || true
                     echo "  UFW: port $WS_PORT TCP open (WebSocket)"
-                    echo "  [WARN] Port $WS_PORT is held by $WS_PORT_OWNER — relay-server won't bind until it's freed"
+                    echo "  [WARN] Port $WS_PORT is held by $WS_PORT_OWNER — peerup relay won't bind until it's freed"
                     if [ -n "$ALT_PORT" ]; then
                         echo "         Alternative: change tcp/$WS_PORT/ws to tcp/$ALT_PORT/ws in relay-server.yaml"
                     fi
@@ -954,14 +954,14 @@ fi
 echo
 
 # --- 5. Build ---
-echo "[6/8] Building relay-server..."
+echo "[6/8] Building peerup..."
 PROJECT_ROOT="$(cd "$RELAY_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 go mod tidy
 BUILD_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server; then
+if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/peerup" ./cmd/peerup; then
     echo
     CURRENT_GO=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+(\.[0-9]+)?')
     if ! version_ge "$CURRENT_GO" "$GO_MIN_VERSION"; then
@@ -973,8 +973,8 @@ if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COM
             echo
             echo "  Retrying build..."
             go mod tidy
-            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
-            echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/peerup" ./cmd/peerup
+            echo "  Built: $RELAY_DIR/peerup ($BUILD_VERSION)"
         else
             echo "  Aborting — cannot continue without a successful build."
             exit 1
@@ -993,21 +993,21 @@ if ! go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COM
             echo
             echo "  Retrying build..."
             go mod tidy
-            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/relay-server" ./cmd/relay-server
-            echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+            go build -ldflags "-X main.version=$BUILD_VERSION -X main.commit=$BUILD_COMMIT -X main.buildDate=$BUILD_DATE" -o "$RELAY_DIR/peerup" ./cmd/peerup
+            echo "  Built: $RELAY_DIR/peerup ($BUILD_VERSION)"
         else
             echo "  Aborting — cannot continue without a successful build."
             exit 1
         fi
     fi
 else
-    echo "  Built: $RELAY_DIR/relay-server ($BUILD_VERSION)"
+    echo "  Built: $RELAY_DIR/peerup ($BUILD_VERSION)"
 fi
 echo
 
 # --- 6. File permissions ---
 echo "[7/8] Setting file permissions..."
-chmod 700 "$RELAY_DIR/relay-server"
+chmod 700 "$RELAY_DIR/peerup"
 if [ -f "$RELAY_DIR/relay_node.key" ]; then
     chmod 600 "$RELAY_DIR/relay_node.key"
 fi
@@ -1039,21 +1039,21 @@ if [ ! -f "$TEMPLATE" ]; then
 fi
 sed -e "s|/home/YOUR_USERNAME/peer-up/relay-server|${RELAY_DIR}|g" \
     -e "s|YOUR_USERNAME|${SERVICE_USER}|g" \
-    "$TEMPLATE" > /tmp/relay-server.service
+    "$TEMPLATE" > /tmp/peerup-relay.service
 
-run_sudo cp /tmp/relay-server.service /etc/systemd/system/relay-server.service
-rm /tmp/relay-server.service
+run_sudo cp /tmp/peerup-relay.service /etc/systemd/system/peerup-relay.service
+rm /tmp/peerup-relay.service
 run_sudo systemctl daemon-reload
-run_sudo systemctl enable relay-server
+run_sudo systemctl enable peerup-relay
 echo "  Service installed and enabled"
 echo
 
 # --- Start or restart ---
-if systemctl is-active --quiet relay-server; then
-    run_sudo systemctl restart relay-server
+if systemctl is-active --quiet peerup-relay; then
+    run_sudo systemctl restart peerup-relay
     echo "Service restarted."
 else
-    run_sudo systemctl start relay-server
+    run_sudo systemctl start peerup-relay
     echo "Service started."
 fi
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -56,7 +55,7 @@ func (g *gaterReloader) ReloadFromFile() error {
 func daemonSocketPath() string {
 	dir, err := config.DefaultConfigDir()
 	if err != nil {
-		log.Fatalf("Cannot determine config directory: %v", err)
+		fatal("Cannot determine config directory: %v", err)
 	}
 	return filepath.Join(dir, "peerup.sock")
 }
@@ -64,7 +63,7 @@ func daemonSocketPath() string {
 func daemonCookiePath() string {
 	dir, err := config.DefaultConfigDir()
 	if err != nil {
-		log.Fatalf("Cannot determine config directory: %v", err)
+		fatal("Cannot determine config directory: %v", err)
 	}
 	return filepath.Join(dir, ".daemon-cookie")
 }
@@ -98,7 +97,7 @@ func runDaemon(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown daemon subcommand: %s\n\n", args[0])
 		printDaemonUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -131,12 +130,12 @@ func runDaemonStart(args []string) {
 	rt, err := newServeRuntime(ctx, cancel, *configFlag, version)
 	if err != nil {
 		cancel()
-		log.Fatalf("Failed to start: %v", err)
+		fatal("Failed to start: %v", err)
 	}
 
 	if err := rt.Bootstrap(); err != nil {
 		rt.Shutdown()
-		log.Fatalf("Bootstrap failed: %v", err)
+		fatal("Bootstrap failed: %v", err)
 	}
 
 	rt.ExposeConfiguredServices()
@@ -149,7 +148,7 @@ func runDaemonStart(args []string) {
 	srv := daemon.NewServer(rt, socketPath, cookiePath, version)
 	if err := srv.Start(); err != nil {
 		rt.Shutdown()
-		log.Fatalf("Daemon API failed to start: %v", err)
+		fatal("Daemon API failed to start: %v", err)
 	}
 
 	fmt.Printf("Daemon API: %s\n", socketPath)
@@ -191,7 +190,7 @@ func daemonClient() *daemon.Client {
 	c, err := daemon.NewClient(daemonSocketPath(), daemonCookiePath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	return c
 }
@@ -209,7 +208,7 @@ func runDaemonStatus(args []string) {
 		resp, err := c.Status()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -218,7 +217,7 @@ func runDaemonStatus(args []string) {
 		text, err := c.StatusText()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Print(text)
 	}
@@ -228,7 +227,7 @@ func runDaemonStop() {
 	c := daemonClient()
 	if err := c.Shutdown(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	fmt.Println("Shutdown requested.")
 }
@@ -245,7 +244,7 @@ func runDaemonPing(args []string) {
 	remaining := fs.Args()
 	if len(remaining) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: peerup daemon ping <peer> [-c N] [--json]")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	peer := remaining[0]
@@ -255,7 +254,7 @@ func runDaemonPing(args []string) {
 		resp, err := c.Ping(peer, *count, *intervalMs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -264,7 +263,7 @@ func runDaemonPing(args []string) {
 		text, err := c.PingText(peer, *count, *intervalMs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Print(text)
 	}
@@ -281,7 +280,7 @@ func runDaemonServices(args []string) {
 		resp, err := c.Services()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -290,7 +289,7 @@ func runDaemonServices(args []string) {
 		text, err := c.ServicesText()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Print(text)
 	}
@@ -308,7 +307,7 @@ func runDaemonPeers(args []string) {
 		resp, err := c.Peers(*allFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -317,7 +316,7 @@ func runDaemonPeers(args []string) {
 		text, err := c.PeersText(*allFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Print(text)
 	}
@@ -332,14 +331,14 @@ func runDaemonConnect(args []string) {
 
 	if *peerFlag == "" || *serviceFlag == "" || *listenFlag == "" {
 		fmt.Fprintln(os.Stderr, "Usage: peerup daemon connect --peer <name> --service <svc> --listen <addr>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	c := daemonClient()
 	resp, err := c.Connect(*peerFlag, *serviceFlag, *listenFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	fmt.Printf("Proxy created: %s -> %s:%s (listen: %s)\n", resp.ID, *peerFlag, *serviceFlag, resp.ListenAddress)
 }
@@ -347,13 +346,13 @@ func runDaemonConnect(args []string) {
 func runDaemonDisconnect(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: peerup daemon disconnect <proxy-id>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	c := daemonClient()
 	if err := c.Disconnect(args[0]); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	fmt.Println("Proxy disconnected.")
 }

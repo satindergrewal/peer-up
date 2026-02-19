@@ -45,6 +45,31 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTokenHex(t *testing.T) {
+	token, err := GenerateToken()
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	hex := TokenHex(token)
+	if len(hex) != 16 { // 8 bytes = 16 hex chars
+		t.Errorf("TokenHex length = %d, want 16", len(hex))
+	}
+	// Should be valid hex
+	for _, c := range hex {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("TokenHex contains non-hex char: %c", c)
+		}
+	}
+}
+
+func TestGenerateTokenUniqueness(t *testing.T) {
+	t1, _ := GenerateToken()
+	t2, _ := GenerateToken()
+	if t1 == t2 {
+		t.Error("two tokens should be different")
+	}
+}
+
 func TestDecodeInvalid(t *testing.T) {
 	_, err := Decode("not-a-valid-code")
 	if err == nil {

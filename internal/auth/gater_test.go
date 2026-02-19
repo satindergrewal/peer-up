@@ -114,6 +114,24 @@ func TestUpdateAuthorizedPeers(t *testing.T) {
 	}
 }
 
+func TestInterceptAddrDial(t *testing.T) {
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
+	unknown := genPeerID(t)
+	addr, _ := multiaddr.NewMultiaddr("/ip4/10.0.0.1/tcp/5678")
+
+	if !g.InterceptAddrDial(unknown, addr) {
+		t.Error("InterceptAddrDial should always allow outbound")
+	}
+}
+
+func TestInterceptAccept(t *testing.T) {
+	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
+
+	if !g.InterceptAccept(testConnMultiaddrs()) {
+		t.Error("InterceptAccept should always allow (check happens in InterceptSecured)")
+	}
+}
+
 func TestInterceptUpgraded(t *testing.T) {
 	g := NewAuthorizedPeerGater(map[peer.ID]bool{})
 	ok, reason := g.InterceptUpgraded(nil)

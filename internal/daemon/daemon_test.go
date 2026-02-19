@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/satindergrewal/peer-up/pkg/p2pnet"
 )
@@ -406,6 +408,486 @@ func TestHandlerShutdown_Response(t *testing.T) {
 	if dataMap["status"] != "shutting down" {
 		t.Errorf("expected status='shutting down', got %v", dataMap["status"])
 	}
+}
+
+// TestNetworkClientIntegration creates a real server+client with a p2pnet.Network
+// and exercises every client method end-to-end. This covers all client methods
+// (Status, Services, Peers, AuthList, Resolve, Expose, Unexpose, etc.) at ~100%.
+func TestNetworkClientIntegration(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "test.sock")
+	cookiePath := filepath.Join(dir, ".test-cookie")
+
+	net := newTestNetwork(t)
+	authKeysPath := filepath.Join(dir, "authorized_keys")
+	os.WriteFile(authKeysPath, nil, 0600) // empty but exists
+
+	gater := &mockGater{}
+	rt := &networkMockRuntime{
+		net:          net,
+		version:      "test-0.2.0",
+		startTime:    time.Now().Add(-120 * time.Second),
+		pingProto:    "/peerup/ping/1.0.0",
+		authKeysPath: authKeysPath,
+		gater:        gater,
+	}
+
+	srv := NewServer(rt, socketPath, cookiePath, "test-0.2.0")
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer srv.Stop()
+
+	client, err := NewClient(socketPath, cookiePath)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// --- Status ---
+	t.Run("Status", func(t *testing.T) {
+		resp, err := client.Status()
+		if err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+		if resp.PeerID == "" {
+			t.Error("PeerID empty")
+		}
+		if resp.Version != "test-0.2.0" {
+			t.Errorf("Version = %q", resp.Version)
+		}
+		if resp.UptimeSeconds < 119 {
+			t.Errorf("UptimeSeconds = %d", resp.UptimeSeconds)
+		}
+	})
+
+	t.Run("StatusText", func(t *testing.T) {
+		text, err := client.StatusText()
+		if err != nil {
+			t.Fatalf("StatusText: %v", err)
+		}
+		for _, want := range []string{"peer_id:", "version:", "uptime:"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("missing %q in text output", want)
+			}
+		}
+	})
+
+	// --- Services ---
+	t.Run("Services_Empty", func(t *testing.T) {
+		svcs, err := client.Services()
+		if err != nil {
+			t.Fatalf("Services: %v", err)
+		}
+		if len(svcs) != 0 {
+			t.Errorf("got %d services, want 0", len(svcs))
+		}
+	})
+
+	t.Run("ServicesText_Empty", func(t *testing.T) {
+		_, err := client.ServicesText()
+		if err != nil {
+			t.Fatalf("ServicesText: %v", err)
+		}
+	})
+
+	// --- Expose / Unexpose ---
+	t.Run("Expose", func(t *testing.T) {
+		if err := client.Expose("ssh", "localhost:22"); err != nil {
+			t.Fatalf("Expose: %v", err)
+		}
+
+		// Verify via Services
+		svcs, err := client.Services()
+		if err != nil {
+			t.Fatalf("Services after expose: %v", err)
+		}
+		if len(svcs) != 1 || svcs[0].Name != "ssh" {
+			t.Errorf("expected 1 service 'ssh', got %v", svcs)
+		}
+	})
+
+	t.Run("Unexpose", func(t *testing.T) {
+		if err := client.Unexpose("ssh"); err != nil {
+			t.Fatalf("Unexpose: %v", err)
+		}
+
+		svcs, err := client.Services()
+		if err != nil {
+			t.Fatalf("Services after unexpose: %v", err)
+		}
+		if len(svcs) != 0 {
+			t.Errorf("expected 0 services, got %d", len(svcs))
+		}
+	})
+
+	t.Run("Unexpose_NotFound", func(t *testing.T) {
+		err := client.Unexpose("nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent service")
+		}
+	})
+
+	// --- Peers ---
+	t.Run("Peers", func(t *testing.T) {
+		peers, err := client.Peers(false)
+		if err != nil {
+			t.Fatalf("Peers: %v", err)
+		}
+		// No peers connected in this test
+		if len(peers) != 0 {
+			t.Errorf("got %d peers, want 0", len(peers))
+		}
+	})
+
+	t.Run("PeersAll", func(t *testing.T) {
+		peers, err := client.Peers(true)
+		if err != nil {
+			t.Fatalf("Peers(all): %v", err)
+		}
+		_ = peers // just verifying no error
+	})
+
+	t.Run("PeersText", func(t *testing.T) {
+		text, err := client.PeersText(false)
+		if err != nil {
+			t.Fatalf("PeersText: %v", err)
+		}
+		_ = text
+	})
+
+	// --- Auth ---
+	pid := genHandlerPeerID(t)
+
+	t.Run("AuthList_Empty", func(t *testing.T) {
+		entries, err := client.AuthList()
+		if err != nil {
+			t.Fatalf("AuthList: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("got %d entries, want 0", len(entries))
+		}
+	})
+
+	t.Run("AuthListText_Empty", func(t *testing.T) {
+		text, err := client.AuthListText()
+		if err != nil {
+			t.Fatalf("AuthListText: %v", err)
+		}
+		_ = text
+	})
+
+	t.Run("AuthAdd", func(t *testing.T) {
+		if err := client.AuthAdd(pid.String(), "test-peer"); err != nil {
+			t.Fatalf("AuthAdd: %v", err)
+		}
+
+		entries, err := client.AuthList()
+		if err != nil {
+			t.Fatalf("AuthList: %v", err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %d", len(entries))
+		}
+		if entries[0].PeerID != pid.String() {
+			t.Errorf("PeerID = %q, want %q", entries[0].PeerID, pid.String())
+		}
+	})
+
+	t.Run("AuthRemove", func(t *testing.T) {
+		if err := client.AuthRemove(pid.String()); err != nil {
+			t.Fatalf("AuthRemove: %v", err)
+		}
+
+		entries, err := client.AuthList()
+		if err != nil {
+			t.Fatalf("AuthList: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("expected 0 entries after remove, got %d", len(entries))
+		}
+	})
+
+	// --- Resolve ---
+	t.Run("Resolve_ByName", func(t *testing.T) {
+		resolvePid := genHandlerPeerID(t)
+		rt.net.RegisterName("home", resolvePid)
+
+		resp, err := client.Resolve("home")
+		if err != nil {
+			t.Fatalf("Resolve: %v", err)
+		}
+		if resp.PeerID != resolvePid.String() {
+			t.Errorf("PeerID = %q", resp.PeerID)
+		}
+		if resp.Source != "local_config" {
+			t.Errorf("Source = %q", resp.Source)
+		}
+	})
+
+	t.Run("ResolveText", func(t *testing.T) {
+		text, err := client.ResolveText("home")
+		if err != nil {
+			t.Fatalf("ResolveText: %v", err)
+		}
+		if !strings.Contains(text, "→") {
+			t.Errorf("text missing arrow: %q", text)
+		}
+	})
+
+	t.Run("Resolve_NotFound", func(t *testing.T) {
+		_, err := client.Resolve("nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent name")
+		}
+	})
+
+	t.Run("ResolveText_NotFound", func(t *testing.T) {
+		_, err := client.ResolveText("nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent name (text)")
+		}
+	})
+
+	// --- Disconnect ---
+	t.Run("Disconnect_NotFound", func(t *testing.T) {
+		err := client.Disconnect("proxy-999")
+		if err == nil {
+			t.Fatal("expected error for nonexistent proxy")
+		}
+	})
+
+	t.Run("Disconnect_Exists", func(t *testing.T) {
+		// Inject a mock proxy into the server's proxy map
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		close(done) // already "done"
+		srv.mu.Lock()
+		srv.proxies["test-proxy-1"] = &activeProxy{
+			ID:      "test-proxy-1",
+			Peer:    "test-peer",
+			Service: "ssh",
+			Listen:  ":0",
+			cancel:  cancel,
+			done:    done,
+		}
+		srv.mu.Unlock()
+		_ = ctx
+
+		if err := client.Disconnect("test-proxy-1"); err != nil {
+			t.Fatalf("Disconnect: %v", err)
+		}
+
+		// Verify removed
+		srv.mu.Lock()
+		_, exists := srv.proxies["test-proxy-1"]
+		srv.mu.Unlock()
+		if exists {
+			t.Error("proxy should be removed after disconnect")
+		}
+	})
+
+	// --- Shutdown (last — signals stop) ---
+	t.Run("Shutdown", func(t *testing.T) {
+		if err := client.Shutdown(); err != nil {
+			t.Fatalf("Shutdown: %v", err)
+		}
+		select {
+		case <-srv.ShutdownCh():
+			// Good
+		case <-time.After(2 * time.Second):
+			t.Fatal("ShutdownCh not closed after Shutdown()")
+		}
+	})
+}
+
+// TestP2PHandlerIntegration tests the P2P-dependent daemon handlers
+// (ping, traceroute, connect) using two real p2pnet.Network instances
+// connected on localhost. This covers the code paths that can't be
+// reached with a single isolated host.
+func TestP2PHandlerIntegration(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "test.sock")
+	cookiePath := filepath.Join(dir, ".test-cookie")
+
+	// Create two p2pnet.Network instances with localhost listen addresses
+	// so they can dial each other directly.
+	netA := newListeningTestNetwork(t)
+	netB := newListeningTestNetwork(t)
+
+	// Connect A → B directly on localhost
+	bAddrs := netB.Host().Addrs()
+	bInfo := peer.AddrInfo{ID: netB.Host().ID(), Addrs: bAddrs}
+	ctx := context.Background()
+	if err := netA.Host().Connect(ctx, bInfo); err != nil {
+		t.Fatalf("connect A→B: %v", err)
+	}
+
+	// Register B's peer ID as "remote" on A's name resolver
+	netA.RegisterName("remote", netB.Host().ID())
+
+	// Register a ping-pong handler on B (reads "ping\n", writes "pong\n")
+	pingProto := "/peerup/ping/1.0.0"
+	netB.Host().SetStreamHandler(protocol.ID(pingProto), func(s network.Stream) {
+		defer s.Close()
+		buf := make([]byte, 64)
+		n, err := s.Read(buf)
+		if err != nil {
+			return
+		}
+		msg := strings.TrimSpace(string(buf[:n]))
+		if msg == "ping" {
+			s.Write([]byte("pong\n"))
+		}
+	})
+
+	// Create daemon server backed by Network A
+	gater := &mockGater{}
+	rt := &networkMockRuntime{
+		net:       netA,
+		version:   "test-0.3.0",
+		startTime: time.Now().Add(-60 * time.Second),
+		pingProto: pingProto,
+		gater:     gater,
+	}
+
+	srv := NewServer(rt, socketPath, cookiePath, "test-0.3.0")
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer srv.Stop()
+
+	client, err := NewClient(socketPath, cookiePath)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// --- Ping (JSON) ---
+	t.Run("Ping_JSON", func(t *testing.T) {
+		resp, err := client.Ping("remote", 2, 100)
+		if err != nil {
+			t.Fatalf("Ping: %v", err)
+		}
+		if len(resp.Results) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(resp.Results))
+		}
+		for i, r := range resp.Results {
+			if r.Error != "" {
+				t.Errorf("result[%d] error: %s", i, r.Error)
+			}
+			if r.Path != "DIRECT" {
+				t.Errorf("result[%d] path = %q, want DIRECT", i, r.Path)
+			}
+			if r.RttMs <= 0 {
+				t.Errorf("result[%d] rtt = %f, want > 0", i, r.RttMs)
+			}
+		}
+		if resp.Stats.Sent != 2 || resp.Stats.Received != 2 {
+			t.Errorf("stats: sent=%d received=%d", resp.Stats.Sent, resp.Stats.Received)
+		}
+	})
+
+	// --- Ping (text) ---
+	t.Run("Ping_Text", func(t *testing.T) {
+		text, err := client.PingText("remote", 1, 100)
+		if err != nil {
+			t.Fatalf("PingText: %v", err)
+		}
+		for _, want := range []string{"PING remote", "seq=1", "ping statistics"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("text missing %q: %s", want, text)
+			}
+		}
+	})
+
+	// --- Ping with unresolvable peer ---
+	t.Run("Ping_UnresolvablePeer", func(t *testing.T) {
+		_, err := client.Ping("nonexistent", 1, 100)
+		if err == nil {
+			t.Fatal("expected error for unresolvable peer")
+		}
+	})
+
+	// --- Traceroute (JSON) ---
+	t.Run("Traceroute_JSON", func(t *testing.T) {
+		// Use doJSON directly since TracerouteText only returns text
+		req := TraceRequest{Peer: "remote"}
+		body, _ := json.Marshal(req)
+		var result p2pnet.TraceResult
+		reqData, status, doErr := client.do("POST", "/v1/traceroute", strings.NewReader(string(body)), nil)
+		if doErr != nil {
+			t.Fatalf("traceroute request: %v", doErr)
+		}
+		if status != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", status, string(reqData))
+		}
+		// Decode the envelope
+		var envelope DataResponse
+		json.Unmarshal(reqData, &envelope)
+		dataBytes, _ := json.Marshal(envelope.Data)
+		json.Unmarshal(dataBytes, &result)
+
+		if result.Path != "DIRECT" {
+			t.Errorf("Path = %q, want DIRECT", result.Path)
+		}
+		if len(result.Hops) == 0 {
+			t.Fatal("expected at least 1 hop")
+		}
+		if result.Hops[0].PeerID == "" {
+			t.Error("first hop PeerID should not be empty")
+		}
+	})
+
+	// --- Traceroute (text) ---
+	t.Run("Traceroute_Text", func(t *testing.T) {
+		text, err := client.TracerouteText("remote")
+		if err != nil {
+			t.Fatalf("TracerouteText: %v", err)
+		}
+		for _, want := range []string{"traceroute to remote", "path: [DIRECT]"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("text missing %q: %s", want, text)
+			}
+		}
+	})
+
+	// --- Traceroute with unresolvable peer ---
+	t.Run("Traceroute_UnresolvablePeer", func(t *testing.T) {
+		_, err := client.TracerouteText("nonexistent")
+		if err == nil {
+			t.Fatal("expected error for unresolvable peer")
+		}
+	})
+
+	// --- Connect (creates TCP listener + proxy entry) ---
+	t.Run("Connect", func(t *testing.T) {
+		// Expose a service on B so the stream protocol is registered
+		netB.ExposeService("echo", "localhost:9999")
+		defer netB.UnexposeService("echo")
+
+		resp, err := client.Connect("remote", "echo", ":0")
+		if err != nil {
+			t.Fatalf("Connect: %v", err)
+		}
+		if resp.ID == "" {
+			t.Error("proxy ID empty")
+		}
+		if resp.ListenAddress == "" {
+			t.Error("listen address empty")
+		}
+
+		// Clean up: disconnect the proxy
+		if err := client.Disconnect(resp.ID); err != nil {
+			t.Fatalf("Disconnect: %v", err)
+		}
+	})
+
+	// --- Connect with unresolvable peer ---
+	t.Run("Connect_UnresolvablePeer", func(t *testing.T) {
+		_, err := client.Connect("nonexistent", "ssh", ":0")
+		if err == nil {
+			t.Fatal("expected error for unresolvable peer")
+		}
+	})
 }
 
 func TestComputePingStats_Empty(t *testing.T) {

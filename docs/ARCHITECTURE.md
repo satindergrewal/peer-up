@@ -43,8 +43,7 @@ peer-up/
 │   │   ├── cmd_status.go    # Local status: version, peer ID, config, services, peers
 │   │   ├── config_template.go # Shared node config YAML template (single source of truth)
 │   │   └── relay_input.go   # Flexible relay address parsing (IP, IP:PORT, multiaddr)
-│   └── relay-server/        # Circuit relay v2 source (builds relay binary)
-│       └── main.go
+│   │   └── cmd_relay_serve.go # Relay server: serve/authorize/info/config
 │
 ├── pkg/p2pnet/              # Importable P2P library
 │   ├── network.go           # Core network setup, relay helpers, name resolution
@@ -93,9 +92,9 @@ peer-up/
 │   └── watchdog/            # Health monitoring + systemd integration
 │       └── watchdog.go      # Health check loop, sd_notify (Ready/Watchdog/Stopping)
 │
-├── relay-server/            # Deployment artifacts (not a Go module)
-│   ├── setup.sh             # Deploy/verify/uninstall (builds from cmd/relay-server)
-│   ├── relay-server.service # systemd unit file
+├── relay-server/            # Deployment artifacts
+│   ├── setup.sh             # Deploy/verify/uninstall (builds peerup, runs relay serve)
+│   ├── relay-server.service # systemd unit template (installed as peerup-relay.service)
 │   └── relay-server.sample.yaml
 │
 ├── deploy/                  # Service management files
@@ -230,7 +229,6 @@ peer-up/
 │   ├── peerup/              # ✅ Single binary (daemon, serve, ping, traceroute, resolve,
 │   │                        #   proxy, whoami, auth, relay, config, service, invite, join,
 │   │                        #   status, init, version)
-│   ├── relay-server/        # ✅ Circuit relay v2 source
 │   └── gateway/             # 🆕 Phase 4F: Multi-mode daemon (SOCKS, DNS, TUN)
 │
 ├── pkg/p2pnet/              # ✅ Core library (importable)
@@ -500,10 +498,10 @@ This ensures goroutines exit cleanly when the parent context is cancelled (e.g.,
 
 ### Watchdog + sd_notify
 
-Both `daemon` and `relay-server` run a watchdog goroutine (`internal/watchdog`) that performs health checks every 30 seconds:
+Both `peerup daemon` and `peerup relay serve` run a watchdog goroutine (`internal/watchdog`) that performs health checks every 30 seconds:
 
 - **peerup daemon**: Checks host has listen addresses, relay reservation is active, and Unix socket is responsive
-- **relay-server**: Checks host has listen addresses and protocols are registered
+- **peerup relay serve**: Checks host has listen addresses and protocols are registered
 
 On success, sends `WATCHDOG=1` to systemd via the `NOTIFY_SOCKET` unix datagram socket (pure Go, no CGo). On non-systemd systems (macOS), all sd_notify calls are no-ops. `READY=1` is sent after startup completes; `STOPPING=1` on shutdown.
 
@@ -527,7 +525,7 @@ When a commit-confirmed is active (`peerup config apply --confirm-timeout`), `se
 
 ### Graceful Shutdown
 
-Long-running commands (`daemon`, `proxy`, `relay-server`) handle `SIGINT`/`SIGTERM` by calling `cancel()` on their root context, which propagates to all background goroutines. The daemon also accepts shutdown requests via the API (`POST /v1/shutdown`). Deferred cleanup (`net.Close()`, `listener.Close()`, socket/cookie removal) runs after goroutines stop.
+Long-running commands (`daemon`, `proxy`, `relay serve`) handle `SIGINT`/`SIGTERM` by calling `cancel()` on their root context, which propagates to all background goroutines. The daemon also accepts shutdown requests via the API (`POST /v1/shutdown`). Deferred cleanup (`net.Close()`, `listener.Close()`, socket/cookie removal) runs after goroutines stop.
 
 ### Atomic Counters
 
@@ -841,7 +839,7 @@ Similar to iOS but with full VPNService API access:
 
 ### Transport Preference
 
-Both `peerup` and `relay-server` register transports in this order:
+Both `peerup daemon` and `peerup relay serve` register transports in this order:
 
 1. **QUIC** (preferred) — 3 RTTs to establish, native multiplexing, better for hole-punching. libp2p's smart dialing (built into v0.47.0) ranks QUIC addresses higher than TCP.
 2. **TCP** — 4 RTTs, universal fallback for networks that block UDP.
@@ -904,7 +902,7 @@ Session duration and data limits are raised from libp2p defaults (2min/128KB) to
 
 ### Key File Permission Verification
 
-Private key files are verified on load to ensure they are not readable by group or others. The shared `internal/identity` package provides `CheckKeyFilePermissions()` and `LoadOrCreateIdentity()`, used by both `peerup` and `relay-server`:
+Private key files are verified on load to ensure they are not readable by group or others. The shared `internal/identity` package provides `CheckKeyFilePermissions()` and `LoadOrCreateIdentity()`, used by both `peerup daemon` and `peerup relay serve`:
 
 - **Expected**: `0600` (owner read/write only)
 - **On violation**: Returns error with actionable fix: `chmod 600 <path>`
@@ -916,7 +914,7 @@ Keys are already created with `0600` permissions, but this check catches degrada
 
 The config system provides three layers of protection against bad configuration:
 
-1. **Archive/Rollback** (`internal/config/archive.go`): On each successful `serve` or `relay-server` startup, the validated config is archived as `.{name}.last-good.yaml` next to the original. If a future edit breaks the config, `peerup config rollback` restores it. Archive writes are atomic (write temp file + rename).
+1. **Archive/Rollback** (`internal/config/archive.go`): On each successful `daemon` or `relay serve` startup, the validated config is archived as `.{name}.last-good.yaml` next to the original. If a future edit breaks the config, `peerup config rollback` restores it. Archive writes are atomic (write temp file + rename).
 
 2. **Commit-Confirmed** (`internal/config/confirm.go`): For remote config changes, `peerup config apply` backs up the current config, applies the new one, and writes a pending marker with a deadline. If `peerup config confirm` is not run before the deadline, the serve process reverts the config and exits. Systemd restarts with the restored config.
 

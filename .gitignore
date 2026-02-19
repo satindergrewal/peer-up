@@ -33,12 +33,16 @@ go.work.sum
 # Testing and archived files
 archived/
 
+# Coverage data (unit + Docker integration merge)
+coverage/
+
 # Configuration files (keep only samples in repo)
 *.yaml
 !*.sample.yaml
 authorized_keys
 relay_authorized_keys
 !configs/*.sample.yaml
+!test/**/compose.yaml
 
 # Key files (private keys should never be committed)
 *.key

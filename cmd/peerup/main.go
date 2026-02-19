@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch os.Args[1] {
@@ -60,7 +60,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -105,6 +105,15 @@ func printUsage() {
 	fmt.Println("  relay add <address> [--peer-id <ID>]     Add a relay server")
 	fmt.Println("  relay list                              List relay servers")
 	fmt.Println("  relay remove <multiaddr>                Remove a relay server")
+	fmt.Println()
+	fmt.Println("Relay server (run on your VPS):")
+	fmt.Println("  relay serve [--config path]              Start the relay server")
+	fmt.Println("  relay authorize <peer-id> [comment]      Allow a peer")
+	fmt.Println("  relay deauthorize <peer-id>              Remove a peer's access")
+	fmt.Println("  relay list-peers                         List authorized peers")
+	fmt.Println("  relay info                               Show peer ID and multiaddrs")
+	fmt.Println("  relay config validate                    Validate relay config")
+	fmt.Println("  relay config rollback                    Restore last-known-good config")
 	fmt.Println()
 	fmt.Println("  service add <name> <address>             Expose a local service")
 	fmt.Println("  service remove <name>                    Remove a service")

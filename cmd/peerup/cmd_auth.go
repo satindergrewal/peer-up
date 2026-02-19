@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,32 +15,10 @@ import (
 	"github.com/satindergrewal/peer-up/internal/termcolor"
 )
 
-// reorderFlagsFirst moves flag arguments (--foo val) before positional args,
-// so Go's flag package can parse them regardless of argument order.
-// Every flag in peerup auth commands takes a value, so any --flag is followed
-// by exactly one value argument (regardless of what that value looks like).
-func reorderFlagsFirst(args []string) []string {
-	var flags, positional []string
-	for i := 0; i < len(args); i++ {
-		if strings.HasPrefix(args[i], "-") {
-			flags = append(flags, args[i])
-			// All our flags (--config, --file, --comment) take a value.
-			// Always consume the next argument as the value.
-			if i+1 < len(args) {
-				flags = append(flags, args[i+1])
-				i++
-			}
-		} else {
-			positional = append(positional, args[i])
-		}
-	}
-	return append(flags, positional...)
-}
-
 func runAuth(args []string) {
 	if len(args) < 1 {
 		printAuthUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	switch args[0] {
@@ -55,7 +33,7 @@ func runAuth(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown auth command: %s\n\n", args[0])
 		printAuthUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -71,127 +49,181 @@ func printAuthUsage() {
 	fmt.Println("All commands support --config <path> and --file <path>.")
 }
 
-// resolveAuthKeysPath finds the authorized_keys file path.
+// resolveAuthKeysPathErr finds the authorized_keys file path.
 // Priority: --file flag > config's security.authorized_keys_file
-func resolveAuthKeysPath(fileFlag, configFlag string) string {
+func resolveAuthKeysPathErr(fileFlag, configFlag string) (string, error) {
 	if fileFlag != "" {
-		return fileFlag
+		return fileFlag, nil
 	}
 
 	cfgFile, err := config.FindConfigFile(configFlag)
 	if err != nil {
-		log.Fatalf("Config error: %v\nUse --file to specify authorized_keys path directly.", err)
+		return "", fmt.Errorf("config error: %w\nUse --file to specify authorized_keys path directly", err)
 	}
 	cfg, err := config.LoadNodeConfig(cfgFile)
 	if err != nil {
-		log.Fatalf("Config error: %v", err)
+		return "", fmt.Errorf("config error: %w", err)
 	}
 	config.ResolveConfigPaths(cfg, filepath.Dir(cfgFile))
 
 	if cfg.Security.AuthorizedKeysFile == "" {
-		log.Fatalf("No authorized_keys_file in config. Use --file to specify path.")
+		return "", fmt.Errorf("no authorized_keys_file in config. Use --file to specify path")
 	}
 
-	return cfg.Security.AuthorizedKeysFile
+	return cfg.Security.AuthorizedKeysFile, nil
 }
 
 func runAuthAdd(args []string) {
-	fs := flag.NewFlagSet("auth add", flag.ExitOnError)
+	if err := doAuthAdd(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		osExit(1)
+	}
+}
+
+func doAuthAdd(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("auth add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
 	fileFlag := fs.String("file", "", "path to authorized_keys file (overrides config)")
 	commentFlag := fs.String("comment", "", "optional comment for this peer")
-	fs.Parse(reorderFlagsFirst(args))
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	if fs.NArg() != 1 {
-		fmt.Println("Usage: peerup auth add <peer-id> [--comment \"label\"]")
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup auth add <peer-id> [--comment \"label\"]")
 	}
 
 	peerIDStr := fs.Arg(0)
-	authKeysPath := resolveAuthKeysPath(*fileFlag, *configFlag)
+	authKeysPath, err := resolveAuthKeysPathErr(*fileFlag, *configFlag)
+	if err != nil {
+		return err
+	}
 
 	if err := auth.AddPeer(authKeysPath, peerIDStr, *commentFlag); err != nil {
-		log.Fatalf("Failed to add peer: %v", err)
+		return fmt.Errorf("failed to add peer: %w", err)
 	}
 
 	termcolor.Green("Authorized peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
 	if *commentFlag != "" {
-		fmt.Printf("  Comment: %s\n", *commentFlag)
+		fmt.Fprintf(stdout, "  Comment: %s\n", *commentFlag)
 	}
-	fmt.Printf("  File: %s\n", authKeysPath)
+	fmt.Fprintf(stdout, "  File: %s\n", authKeysPath)
+	return nil
 }
 
 func runAuthList(args []string) {
-	fs := flag.NewFlagSet("auth list", flag.ExitOnError)
+	if err := doAuthList(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		osExit(1)
+	}
+}
+
+func doAuthList(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("auth list", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
 	fileFlag := fs.String("file", "", "path to authorized_keys file (overrides config)")
-	fs.Parse(reorderFlagsFirst(args))
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
-	authKeysPath := resolveAuthKeysPath(*fileFlag, *configFlag)
+	authKeysPath, err := resolveAuthKeysPathErr(*fileFlag, *configFlag)
+	if err != nil {
+		return err
+	}
 
 	entries, err := auth.ListPeers(authKeysPath)
 	if err != nil {
-		log.Fatalf("Failed to list peers: %v", err)
+		return fmt.Errorf("failed to list peers: %w", err)
 	}
 
 	if len(entries) == 0 {
-		fmt.Println("No authorized peers.")
-		return
+		fmt.Fprintln(stdout, "No authorized peers.")
+		return nil
 	}
 
-	fmt.Printf("Authorized peers (%d):\n\n", len(entries))
+	fmt.Fprintf(stdout, "Authorized peers (%d):\n\n", len(entries))
 	for i, entry := range entries {
 		short := entry.PeerID.String()[:16] + "..."
 		full := entry.PeerID.String()
 		if entry.Comment != "" {
-			fmt.Printf("  %d. %s  # %s\n", i+1, short, entry.Comment)
+			fmt.Fprintf(stdout, "  %d. %s  # %s\n", i+1, short, entry.Comment)
 		} else {
-			fmt.Printf("  %d. %s\n", i+1, short)
+			fmt.Fprintf(stdout, "  %d. %s\n", i+1, short)
 		}
 		termcolor.Faint("     %s\n", full)
 	}
-	fmt.Printf("\nFile: %s\n", authKeysPath)
+	fmt.Fprintf(stdout, "\nFile: %s\n", authKeysPath)
+	return nil
 }
 
 func runAuthRemove(args []string) {
-	fs := flag.NewFlagSet("auth remove", flag.ExitOnError)
+	if err := doAuthRemove(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		osExit(1)
+	}
+}
+
+func doAuthRemove(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("auth remove", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
 	fileFlag := fs.String("file", "", "path to authorized_keys file (overrides config)")
-	fs.Parse(reorderFlagsFirst(args))
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	if fs.NArg() != 1 {
-		fmt.Println("Usage: peerup auth remove <peer-id>")
-		os.Exit(1)
+		return fmt.Errorf("usage: peerup auth remove <peer-id>")
 	}
 
 	peerIDStr := fs.Arg(0)
-	authKeysPath := resolveAuthKeysPath(*fileFlag, *configFlag)
+	authKeysPath, err := resolveAuthKeysPathErr(*fileFlag, *configFlag)
+	if err != nil {
+		return err
+	}
 
 	if err := auth.RemovePeer(authKeysPath, peerIDStr); err != nil {
-		log.Fatalf("Failed to remove peer: %v", err)
+		return fmt.Errorf("failed to remove peer: %w", err)
 	}
 
 	termcolor.Green("Revoked peer: %s", peerIDStr[:min(16, len(peerIDStr))]+"...")
-	fmt.Printf("  File: %s\n", authKeysPath)
+	fmt.Fprintf(stdout, "  File: %s\n", authKeysPath)
+	return nil
 }
 
 func runAuthValidate(args []string) {
-	fs := flag.NewFlagSet("auth validate", flag.ExitOnError)
+	if err := doAuthValidate(args, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		osExit(1)
+	}
+}
+
+func doAuthValidate(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("auth validate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	configFlag := fs.String("config", "", "path to config file")
 	fileFlag := fs.String("file", "", "path to authorized_keys file (overrides config)")
-	fs.Parse(reorderFlagsFirst(args))
+	if err := fs.Parse(reorderArgs(args, nil)); err != nil {
+		return err
+	}
 
 	// Accept positional arg or resolve from config
 	authKeysPath := ""
 	if fs.NArg() >= 1 {
 		authKeysPath = fs.Arg(0)
 	} else {
-		authKeysPath = resolveAuthKeysPath(*fileFlag, *configFlag)
+		var err error
+		authKeysPath, err = resolveAuthKeysPathErr(*fileFlag, *configFlag)
+		if err != nil {
+			return err
+		}
 	}
 
 	file, err := os.Open(authKeysPath)
 	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -229,18 +261,19 @@ func runAuthValidate(args []string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("Error reading file: %v", err)
+		return fmt.Errorf("error reading file: %w", err)
 	}
 
 	if errorCount > 0 {
 		termcolor.Red("Validation failed with %d error(s):", errorCount)
 		for _, e := range errors {
-			fmt.Printf("  %s\n", e)
+			fmt.Fprintf(stdout, "  %s\n", e)
 		}
-		os.Exit(1)
+		return fmt.Errorf("validation failed with %d error(s)", errorCount)
 	}
 
 	termcolor.Green("Validation passed")
-	fmt.Printf("  Valid peer IDs: %d\n", validCount)
-	fmt.Printf("  File: %s\n", authKeysPath)
+	fmt.Fprintf(stdout, "  Valid peer IDs: %d\n", validCount)
+	fmt.Fprintf(stdout, "  File: %s\n", authKeysPath)
+	return nil
 }
