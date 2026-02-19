@@ -43,6 +43,8 @@ authorized_keys
 relay_authorized_keys
 !configs/*.sample.yaml
 !test/**/compose.yaml
+!website/hugo.yaml
+!.github/workflows/*.yaml
 
 # Key files (private keys should never be committed)
 *.key

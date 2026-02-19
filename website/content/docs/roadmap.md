@@ -1,4 +1,9 @@
-# peer-up Development Roadmap
+---
+title: "Roadmap"
+weight: 6
+---
+<!-- Auto-synced from docs/ROADMAP.md by sync-docs.sh — do not edit directly -->
+
 
 This document outlines the multi-phase evolution of peer-up from a simple NAT traversal tool to a comprehensive decentralized P2P network infrastructure.
 
@@ -343,7 +348,7 @@ Priority areas (by gap severity):
 - [ ] **internal/auth** (50% → target 75%+) — hot-reload, concurrent access, malformed input
 - [ ] **Docker integration tests** — multi-container test environment for realistic daemon-to-daemon scenarios (invite/join, ping, proxy, relay traversal)
 - [ ] **CI coverage reporting** — add coverage threshold to GitHub Actions (`go test -coverprofile`, fail if below target)
-- [x] **Engineering journal** ([`docs/ENGINEERING-JOURNAL.md`](ENGINEERING-JOURNAL.md)) — 28 architecture decision records (ADRs) covering core architecture (8) and all batches A-G. Not a changelog — documents *why* every design choice was made, what alternatives were considered, and what trade-offs were accepted.
+- [x] **Engineering journal** ([`docs/ENGINEERING-JOURNAL.md`]../engineering-journal/) — 28 architecture decision records (ADRs) covering core architecture (8) and all batches A-G. Not a changelog — documents *why* every design choice was made, what alternatives were considered, and what trade-offs were accepted.
 
 **Service CLI** (completed — completes the CLI config management pattern):
 - [x] `peerup service add <name> <address>` — add a service (enabled by default), optional `--protocol` flag
@@ -505,12 +510,9 @@ Waiting for transfers...
 **Deliverables**:
 
 **Website & Documentation (peerup.dev)**:
-- [x] Static documentation site built with [Hugo](https://gohugo.io/) + [Hextra](https://imfing.github.io/hextra/) theme — Go-based SSG, fast builds, matches the project toolchain, built-in search and dark mode
-- [x] Automated docs sync (`website/sync-docs.sh`) — transforms `docs/*.md` into Hugo-ready content with front matter and link rewriting
-- [x] Elegant landing page with hero section and feature grid
-- [x] Seven retroactive blog posts for Batches A-G (outcomes-focused)
-- [x] GitHub Actions CI/CD — build Hugo site and deploy to GitHub Pages on every push to `main`
-- [ ] GitHub Pages hosting with custom domain (`peerup.dev`) — DNS pointing pending
+- [ ] Static documentation site built with [Hugo](https://gohugo.io/) + [Hextra](https://imfing.github.io/hextra/) theme — Go-based SSG, fast builds, matches the project toolchain, built-in search and dark mode
+- [ ] GitHub Pages hosting with custom domain (`peerup.dev`)
+- [ ] GitHub Actions CI/CD — build Hugo site and deploy to GitHub Pages on every push to `main`
 - [ ] DNS managed on Cloudflare — CNAME `peerup.dev` → GitHub Pages, CNAME `get.peerup.dev` → serves install script
 - [ ] Landing page — project overview, quick start, feature highlights, comparison table (vs Tailscale/ZeroTier/Netbird)
 - [ ] Existing docs rendered as site pages (ARCHITECTURE, FAQ, TESTING, ROADMAP)

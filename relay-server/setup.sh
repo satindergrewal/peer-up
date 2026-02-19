@@ -414,10 +414,10 @@ run_check() {
 
         # Check config permissions
         PERMS=$(stat -c '%a' "$RELAY_DIR/relay-server.yaml" 2>/dev/null || stat -f '%Lp' "$RELAY_DIR/relay-server.yaml" 2>/dev/null)
-        if [ "$PERMS" = "644" ] || [ "$PERMS" = "600" ]; then
+        if [ "$PERMS" = "600" ]; then
             check_pass "relay-server.yaml permissions: $PERMS"
         else
-            check_warn "relay-server.yaml permissions: $PERMS (expected 644)"
+            check_warn "relay-server.yaml permissions: $PERMS (expected 600)"
         fi
     else
         check_fail "relay-server.yaml not found — copy from configs/relay-server.sample.yaml"
@@ -1015,14 +1015,14 @@ if [ -f "$RELAY_DIR/relay_authorized_keys" ]; then
     chmod 600 "$RELAY_DIR/relay_authorized_keys"
 fi
 if [ -f "$RELAY_DIR/relay-server.yaml" ]; then
-    chmod 644 "$RELAY_DIR/relay-server.yaml"
+    chmod 600 "$RELAY_DIR/relay-server.yaml"
 fi
 # When running as root for a different service user, transfer ownership
 if [ "$SERVICE_USER" != "$CURRENT_USER" ]; then
     chown -R "$SERVICE_USER:$SERVICE_USER" "$RELAY_DIR"
     echo "  Ownership: $SERVICE_USER"
 fi
-echo "  Binary: 700, keys: 600, config: 644"
+echo "  Binary: 700, keys: 600, config: 600"
 echo
 
 # --- 7. Install systemd service ---
