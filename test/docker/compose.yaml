@@ -1,0 +1,51 @@
+# Docker Compose topology for peer-up integration tests.
+#
+# Three containers on a single bridge network:
+#   relay  (172.28.0.10) — circuit relay server, gating disabled for tests
+#   node-a (172.28.0.11) — first peer (inviter / daemon host)
+#   node-b (172.28.0.12) — second peer (joiner / ping client)
+#
+# All containers start with "sleep infinity" and are fully orchestrated
+# by the Go test via "docker exec". The test writes configs, starts
+# processes, and verifies results.
+
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: test/docker/Dockerfile
+      target: relay
+    container_name: relay
+    networks:
+      peerup-test:
+        ipv4_address: 172.28.0.10
+    entrypoint: ["sleep", "infinity"]
+
+  node-a:
+    build:
+      context: ../..
+      dockerfile: test/docker/Dockerfile
+      target: node
+    container_name: node-a
+    networks:
+      peerup-test:
+        ipv4_address: 172.28.0.11
+    entrypoint: ["sleep", "infinity"]
+
+  node-b:
+    build:
+      context: ../..
+      dockerfile: test/docker/Dockerfile
+      target: node
+    container_name: node-b
+    networks:
+      peerup-test:
+        ipv4_address: 172.28.0.12
+    entrypoint: ["sleep", "infinity"]
+
+networks:
+  peerup-test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

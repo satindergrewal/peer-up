@@ -39,6 +39,7 @@ archived/
 authorized_keys
 relay_authorized_keys
 !configs/*.sample.yaml
+!test/**/compose.yaml
 
 # Key files (private keys should never be committed)
 *.key
