@@ -577,3 +577,117 @@ func TestValidateRelayServerConfigBadDataSize(t *testing.T) {
 		t.Error("expected error for invalid session_data_limit")
 	}
 }
+
+func TestDefaultConfigDir(t *testing.T) {
+	dir, err := DefaultConfigDir()
+	if err != nil {
+		t.Fatalf("DefaultConfigDir: %v", err)
+	}
+	if dir == "" {
+		t.Error("DefaultConfigDir returned empty string")
+	}
+	if !filepath.IsAbs(dir) {
+		t.Errorf("DefaultConfigDir returned relative path: %q", dir)
+	}
+}
+
+func TestLoadClientNodeConfig(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `
+identity:
+  key_file: "client.key"
+network:
+  listen_addresses:
+    - "/ip4/0.0.0.0/tcp/0"
+  force_private_reachability: true
+relay:
+  addresses:
+    - "/ip4/203.0.113.50/tcp/7777/p2p/12D3KooWRzaGMTqQbRHNMZkAYj8ALUXoK99qSjhiFLanDoVWK9An"
+  reservation_interval: "2m"
+discovery:
+  rendezvous: "peerup-test-net"
+  bootstrap_peers: []
+security:
+  authorized_keys_file: "authorized_keys"
+  enable_connection_gating: true
+protocols:
+  ping_pong:
+    enabled: true
+    id: "/pingpong/1.0.0"
+names:
+  home: "12D3KooWPrmh163sTHW3mYQm7YsLsSR2wr71fPp4g6yjuGv3sGQt"
+`
+	path := filepath.Join(dir, "client.yaml")
+	os.WriteFile(path, []byte(yaml), 0600)
+
+	cfg, err := LoadClientNodeConfig(path)
+	if err != nil {
+		t.Fatalf("LoadClientNodeConfig: %v", err)
+	}
+	if cfg.Identity.KeyFile != "client.key" {
+		t.Errorf("KeyFile = %q", cfg.Identity.KeyFile)
+	}
+	if !cfg.Network.ForcePrivateReachability {
+		t.Error("ForcePrivateReachability should be true")
+	}
+	if cfg.Names["home"] != "12D3KooWPrmh163sTHW3mYQm7YsLsSR2wr71fPp4g6yjuGv3sGQt" {
+		t.Errorf("Names[home] = %q", cfg.Names["home"])
+	}
+}
+
+func TestLoadClientNodeConfigMissing(t *testing.T) {
+	_, err := LoadClientNodeConfig("/nonexistent/path.yaml")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestValidateHomeNodeConfig(t *testing.T) {
+	valid := &HomeNodeConfig{
+		Identity:  IdentityConfig{KeyFile: "key"},
+		Network:   NetworkConfig{ListenAddresses: []string{"/ip4/0.0.0.0/tcp/0"}},
+		Relay:     RelayConfig{Addresses: []string{"/ip4/1.2.3.4/tcp/7777/p2p/X"}},
+		Discovery: DiscoveryConfig{Rendezvous: "test"},
+		Security:  SecurityConfig{EnableConnectionGating: false},
+		Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "/pingpong/1.0.0"}},
+	}
+
+	if err := ValidateHomeNodeConfig(valid); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	}
+
+	// Missing key_file
+	invalid := *valid
+	invalid.Identity.KeyFile = ""
+	if err := ValidateHomeNodeConfig(&invalid); err == nil {
+		t.Error("expected error for missing key_file")
+	}
+}
+
+func TestValidateClientNodeConfig(t *testing.T) {
+	valid := &ClientNodeConfig{
+		Network:   NetworkConfig{ListenAddresses: []string{"/ip4/0.0.0.0/tcp/0"}},
+		Relay:     RelayConfig{Addresses: []string{"/ip4/1.2.3.4/tcp/7777/p2p/X"}},
+		Discovery: DiscoveryConfig{Rendezvous: "test"},
+		Security:  SecurityConfig{EnableConnectionGating: false},
+		Protocols: ProtocolsConfig{PingPong: PingPongConfig{ID: "/pingpong/1.0.0"}},
+	}
+
+	if err := ValidateClientNodeConfig(valid); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	}
+
+	// Missing listen_addresses
+	invalid := *valid
+	invalid.Network.ListenAddresses = nil
+	if err := ValidateClientNodeConfig(&invalid); err == nil {
+		t.Error("expected error for missing listen_addresses")
+	}
+
+	// Gating without auth_keys
+	invalid2 := *valid
+	invalid2.Security = SecurityConfig{EnableConnectionGating: true, AuthorizedKeysFile: ""}
+	if err := ValidateClientNodeConfig(&invalid2); err == nil {
+		t.Error("expected error for gating without auth_keys")
+	}
+}

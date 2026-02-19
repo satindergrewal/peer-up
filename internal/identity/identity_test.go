@@ -96,6 +96,40 @@ func TestLoadOrCreateIdentity_BadPermissions(t *testing.T) {
 	}
 }
 
+func TestCheckKeyFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permissions not applicable on Windows")
+	}
+
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "test.key")
+
+	// Create key with correct permissions
+	LoadOrCreateIdentity(keyPath)
+
+	// Good permissions (0600)
+	if err := CheckKeyFilePermissions(keyPath); err != nil {
+		t.Errorf("0600 should pass: %v", err)
+	}
+
+	// Bad permissions (0644)
+	os.Chmod(keyPath, 0644)
+	if err := CheckKeyFilePermissions(keyPath); err == nil {
+		t.Error("0644 should fail")
+	}
+
+	// Bad permissions (0666)
+	os.Chmod(keyPath, 0666)
+	if err := CheckKeyFilePermissions(keyPath); err == nil {
+		t.Error("0666 should fail")
+	}
+
+	// Nonexistent file
+	if err := CheckKeyFilePermissions("/nonexistent/key"); err == nil {
+		t.Error("nonexistent file should fail")
+	}
+}
+
 func TestPeerIDFromKeyFile(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "test.key")

@@ -1,10 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -272,6 +274,75 @@ func TestEnforceCommitConfirmedCancelled(t *testing.T) {
 	}
 
 	if exitCalled.Load() {
+		t.Error("exitFunc should not be called on cancel")
+	}
+}
+
+func TestEnforceCommitConfirmedWriterTimeout(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	original := []byte("original\n")
+
+	if err := os.WriteFile(cfgPath, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := BeginCommitConfirmed(cfgPath, 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("modified\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	var exitCode atomic.Int32
+	exitCode.Store(-1)
+	exitFunc := func(code int) { exitCode.Store(int32(code)) }
+
+	// Deadline in the past triggers immediate revert
+	EnforceCommitConfirmedWriter(context.Background(), &buf, cfgPath, time.Now().Add(-time.Second), exitFunc)
+
+	if exitCode.Load() != 1 {
+		t.Errorf("exit code = %d, want 1", exitCode.Load())
+	}
+	output := buf.String()
+	if !strings.Contains(output, "reverting") {
+		t.Errorf("output = %q, want it to contain 'reverting'", output)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	if string(data) != string(original) {
+		t.Errorf("config = %q, want %q", data, original)
+	}
+}
+
+func TestEnforceCommitConfirmedWriterCancelled(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("data\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := BeginCommitConfirmed(cfgPath, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	exitCalled := false
+	exitFunc := func(code int) { exitCalled = true }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		EnforceCommitConfirmedWriter(ctx, &buf, cfgPath, time.Now().Add(10*time.Second), exitFunc)
+		close(done)
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("did not return on cancel")
+	}
+
+	if exitCalled {
 		t.Error("exitFunc should not be called on cancel")
 	}
 }
