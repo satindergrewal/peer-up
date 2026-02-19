@@ -1,0 +1,21 @@
+/* peer-up brand customizations */
+
+/* Feature card hover effect */
+.hextra-feature-card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+/* Subtle shadow on feature cards */
+.hextra-feature-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hextra-feature-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Dark mode shadow adjustment */
+:is(.dark .hextra-feature-card:hover) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}

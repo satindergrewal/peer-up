@@ -388,7 +388,8 @@ docs/                          # Documentation
 ├── FAQ.md                     # Frequently asked questions
 ├── NETWORK-TOOLS.md           # Ping, traceroute, resolve guide
 ├── ROADMAP.md                 # Multi-phase implementation plan
-└── TESTING.md                 # Test strategy and coverage
+├── TESTING.md                 # Test strategy and coverage
+└── ENGINEERING-JOURNAL.md     # Architecture decision records (ADRs)
 ```
 
 ## Security
@@ -477,6 +478,7 @@ Issues and PRs are welcome.
 | [NETWORK-TOOLS.md](docs/NETWORK-TOOLS.md) | Ping, traceroute, resolve usage guide |
 | [ROADMAP.md](docs/ROADMAP.md) | Multi-phase implementation plan |
 | [TESTING.md](docs/TESTING.md) | Test strategy, coverage, integration tests |
+| [ENGINEERING-JOURNAL.md](docs/ENGINEERING-JOURNAL.md) | Architecture decision records: why every design choice was made |
 
 ## Dependencies
 

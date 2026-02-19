@@ -1,0 +1,16 @@
+---
+title: Documentation
+---
+
+Everything you need to know about peer-up, from getting started to deep architecture details.
+
+{{< cards >}}
+  {{< card link="quick-start" title="Quick Start" subtitle="Get connected in 60 seconds" icon="play" >}}
+  {{< card link="architecture" title="Architecture" subtitle="How peer-up works under the hood" icon="cube" >}}
+  {{< card link="daemon-api" title="Daemon API" subtitle="REST API reference for the daemon" icon="terminal" >}}
+  {{< card link="network-tools" title="Network Tools" subtitle="Ping, traceroute, and resolve" icon="wifi" >}}
+  {{< card link="faq" title="FAQ" subtitle="Security, comparisons, troubleshooting" icon="question-mark-circle" >}}
+  {{< card link="testing" title="Testing" subtitle="Test strategy and coverage" icon="check-circle" >}}
+  {{< card link="roadmap" title="Roadmap" subtitle="Multi-phase implementation plan" icon="map" >}}
+  {{< card link="engineering-journal" title="Engineering Journal" subtitle="Why every decision was made" icon="book-open" >}}
+{{< /cards >}}

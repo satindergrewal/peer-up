@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# sync-docs.sh — Transforms docs/*.md into website/content/docs/ with Hugo front matter.
+#
+# This script is idempotent: running it twice produces identical output.
+# It runs before every Hugo build (locally and in CI).
+#
+# Usage:
+#   cd website && bash sync-docs.sh
+#   cd website && bash sync-docs.sh && hugo server
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOCS_DIR="$(dirname "$SCRIPT_DIR")/docs"
+OUT_DIR="$SCRIPT_DIR/content/docs"
+
+# Ensure output directory exists
+mkdir -p "$OUT_DIR"
+
+# GitHub repo base URL for linking to source files
+GITHUB_BASE="https://github.com/satindergrewal/peer-up/blob/main"
+
+# Map: source filename -> output filename:weight:title
+declare -A DOC_MAP
+DOC_MAP=(
+  ["ARCHITECTURE.md"]="architecture.md:1:Architecture"
+  ["DAEMON-API.md"]="daemon-api.md:2:Daemon API"
+  ["NETWORK-TOOLS.md"]="network-tools.md:3:Network Tools"
+  ["FAQ.md"]="faq.md:4:FAQ"
+  ["TESTING.md"]="testing.md:5:Testing"
+  ["ROADMAP.md"]="roadmap.md:6:Roadmap"
+  ["ENGINEERING-JOURNAL.md"]="engineering-journal.md:7:Engineering Journal"
+)
+
+sync_doc() {
+  local src_file="$1"
+  local out_file="$2"
+  local weight="$3"
+  local title="$4"
+  local src_basename
+  src_basename="$(basename "$src_file")"
+
+  local src_path="$DOCS_DIR/$src_file"
+  local dst_path="$OUT_DIR/$out_file"
+
+  if [[ ! -f "$src_path" ]]; then
+    echo "  SKIP $src_file (not found)"
+    return
+  fi
+
+  # Read the source file, strip the first # heading (Hugo renders title from front matter)
+  local content
+  content="$(cat "$src_path")"
+
+  # Remove the first line if it starts with "# " (the title heading)
+  local body
+  body="$(echo "$content" | sed '1{/^# /d;}')"
+
+  # Rewrite internal doc links: [TEXT](FILENAME.md) -> [TEXT](../lowercase-name/)
+  # Only matches links to files in the DOC_MAP
+  for map_src in "${!DOC_MAP[@]}"; do
+    IFS=':' read -r map_out _ _ <<< "${DOC_MAP[$map_src]}"
+    local map_slug="${map_out%.md}"
+    # Replace (FILENAME.md) with (../slug/)
+    body="$(echo "$body" | sed "s|(\(${map_src}\))|../${map_slug}/|g")"
+    # Also handle [text](FILENAME.md) pattern
+    body="$(echo "$body" | sed "s|(${map_src})|(../${map_slug}/)|g")"
+  done
+
+  # Rewrite relative source file references to GitHub URLs
+  # e.g., (../cmd/peerup/...) -> (https://github.com/.../cmd/peerup/...)
+  body="$(echo "$body" | sed "s|(\.\./\(cmd/\)|($GITHUB_BASE/\1|g")"
+  body="$(echo "$body" | sed "s|(\.\./\(pkg/\)|($GITHUB_BASE/\1|g")"
+  body="$(echo "$body" | sed "s|(\.\./\(internal/\)|($GITHUB_BASE/\1|g")"
+  body="$(echo "$body" | sed "s|(\.\./\(relay-server/\)|($GITHUB_BASE/\1|g")"
+  body="$(echo "$body" | sed "s|(\.\./\(deploy/\)|($GITHUB_BASE/\1|g")"
+  body="$(echo "$body" | sed "s|(\.\./\(test/\)|($GITHUB_BASE/\1|g")"
+
+  # Write output with Hugo front matter
+  cat > "$dst_path" << FRONTMATTER
+---
+title: "${title}"
+weight: ${weight}
+---
+<!-- Auto-synced from docs/${src_basename} by sync-docs.sh — do not edit directly -->
+
+${body}
+FRONTMATTER
+
+  echo "  SYNC $src_file -> $out_file"
+}
+
+# Quick-start page extracted from README.md (## Quick Start section)
+sync_quickstart() {
+  local readme="$(dirname "$SCRIPT_DIR")/README.md"
+  local dst_path="$OUT_DIR/quick-start.md"
+
+  if [[ ! -f "$readme" ]]; then
+    echo "  SKIP quick-start (README.md not found)"
+    return
+  fi
+
+  # Extract content between "## Quick Start" and the next "## " heading
+  local in_section=0
+  local content=""
+
+  while IFS= read -r line; do
+    if [[ "$line" == "## Quick Start"* ]]; then
+      in_section=1
+      continue
+    fi
+    if [[ $in_section -eq 1 && "$line" == "## "* ]]; then
+      break
+    fi
+    if [[ $in_section -eq 1 ]]; then
+      content+="$line"$'\n'
+    fi
+  done < "$readme"
+
+  cat > "$dst_path" << FRONTMATTER
+---
+title: "Quick Start"
+weight: 0
+---
+<!-- Auto-synced from README.md by sync-docs.sh — do not edit directly -->
+
+${content}
+FRONTMATTER
+
+  echo "  SYNC README.md -> quick-start.md"
+}
+
+echo "Syncing docs/ -> website/content/docs/"
+
+# Sync all mapped docs
+for src_file in "${!DOC_MAP[@]}"; do
+  IFS=':' read -r out_file weight title <<< "${DOC_MAP[$src_file]}"
+  sync_doc "$src_file" "$out_file" "$weight" "$title"
+done
+
+# Sync quick-start from README
+sync_quickstart
+
+echo "Done. $(ls "$OUT_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ') files synced."
