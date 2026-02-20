@@ -1,6 +1,6 @@
 ---
 title: "Testing"
-weight: 9
+weight: 10
 description: "Test strategy for peer-up: unit tests, Docker integration tests, coverage targets, and CI pipeline configuration."
 ---
 <!-- Auto-synced from docs/TESTING.md by sync-docs.sh  - do not edit directly -->

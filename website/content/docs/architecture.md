@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-weight: 7
+weight: 8
 description: "Technical architecture of peer-up: libp2p foundation, circuit relay v2, DHT peer discovery, daemon design, connection gating, and naming system."
 ---
 <!-- Auto-synced from docs/ARCHITECTURE.md by sync-docs.sh  - do not edit directly -->

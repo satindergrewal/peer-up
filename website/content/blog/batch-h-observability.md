@@ -95,4 +95,4 @@ A pre-built Grafana dashboard ships in `grafana/peerup-dashboard.json`. Import i
 | New tests | 20+ |
 ---
 
-*Batch H is the eighth development batch. See the [engineering journal](/docs/engineering-journal/) for the full decision trail.*
+*Batch H is the eighth development batch. See the [monitoring guide](/docs/monitoring/) for Prometheus + Grafana setup, and the [engineering journal](/docs/engineering-journal/) for the full decision trail.*

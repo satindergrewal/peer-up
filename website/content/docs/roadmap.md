@@ -1,6 +1,6 @@
 ---
 title: "Roadmap"
-weight: 8
+weight: 9
 description: "Multi-phase development roadmap for peer-up. From NAT traversal tool to decentralized P2P network infrastructure."
 ---
 <!-- Auto-synced from docs/ROADMAP.md by sync-docs.sh  - do not edit directly -->

@@ -1,6 +1,6 @@
 ---
 title: "Daemon API"
-weight: 6
+weight: 7
 description: "REST API reference for the peer-up daemon. Unix socket endpoints for managing peers, services, proxies, ping, traceroute, and more."
 ---
 <!-- Auto-synced from docs/DAEMON-API.md by sync-docs.sh  - do not edit directly -->
