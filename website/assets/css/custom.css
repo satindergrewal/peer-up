@@ -1,21 +1,488 @@
 /* peer-up brand customizations */
 
-/* Feature card hover effect */
-.hextra-feature-card:hover {
-  transform: translateY(-2px);
-  transition: transform 0.2s ease;
-}
+/* ============================================================ */
+/* Feature card hover effect (existing)                          */
+/* ============================================================ */
 
-/* Subtle shadow on feature cards */
 .hextra-feature-card {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .hextra-feature-card:hover {
+  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* Dark mode shadow adjustment */
 :is(.dark .hextra-feature-card:hover) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================ */
+/* Hero logo — globe above the badge                              */
+/* ============================================================ */
+
+.peerup-hero-logo {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.peerup-hero-logo img {
+  width: 96px;
+  height: 96px;
+  border-radius: 20%;
+  transition: transform 0.3s ease;
+}
+
+.peerup-hero-logo img:hover {
+  transform: scale(1.05);
+}
+
+/* ============================================================ */
+/* Hero hook — problem-first line above headline                 */
+/* ============================================================ */
+
+.peerup-hero-hook {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #6b7280;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+:is(.dark .peerup-hero-hook) {
+  color: #9ca3af;
+}
+
+/* ============================================================ */
+/* Secondary button (View on GitHub)                             */
+/* ============================================================ */
+
+.peerup-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+  background: transparent;
+  border: 1.5px solid #d1d5db;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.peerup-secondary-btn:hover {
+  border-color: #9ca3af;
+  color: #111827;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:is(.dark .peerup-secondary-btn) {
+  color: #d1d5db;
+  border-color: #4b5563;
+}
+
+:is(.dark .peerup-secondary-btn:hover) {
+  border-color: #9ca3af;
+  color: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================================ */
+/* Section layout — shared by all new sections                   */
+/* ============================================================ */
+
+.peerup-section {
+  width: 100%;
+  margin-top: 4rem;
+  margin-bottom: 2rem;
+}
+
+.peerup-section-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+:is(.dark .peerup-section-title) {
+  color: #f9fafb;
+}
+
+.peerup-section-subtitle {
+  font-size: 1rem;
+  color: #6b7280;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+:is(.dark .peerup-section-subtitle) {
+  color: #9ca3af;
+}
+
+/* ============================================================ */
+/* Terminal Demo section                                         */
+/* ============================================================ */
+
+.peerup-demo-container {
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+:is(.dark .peerup-demo-container) {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.4),
+    0 2px 4px -2px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.peerup-demo-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ============================================================ */
+/* How It Works — 3-step grid                                    */
+/* ============================================================ */
+
+.peerup-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .peerup-steps-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+
+.peerup-step {
+  position: relative;
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.peerup-step:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+:is(.dark .peerup-step) {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+:is(.dark .peerup-step:hover) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.peerup-step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.peerup-step-image {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+:is(.dark .peerup-step-image) {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.peerup-step-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+:is(.dark .peerup-step-title) {
+  color: #f9fafb;
+}
+
+.peerup-step-desc {
+  font-size: 0.875rem;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+:is(.dark .peerup-step-desc) {
+  color: #9ca3af;
+}
+
+.peerup-step-desc code {
+  font-size: 0.8125rem;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+:is(.dark .peerup-step-desc code) {
+  background: rgba(122, 162, 247, 0.15);
+  color: #7aa2f7;
+}
+
+/* ============================================================ */
+/* Network Diagram section                                       */
+/* ============================================================ */
+
+.peerup-diagram-container {
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+:is(.dark .peerup-diagram-container) {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.4),
+    0 2px 4px -2px rgba(0, 0, 0, 0.3);
+}
+
+.peerup-diagram-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ============================================================ */
+/* Install section                                               */
+/* ============================================================ */
+
+.peerup-install-container {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+/* ============================================================ */
+/* Bottom CTA grid                                               */
+/* ============================================================ */
+
+.peerup-cta-section {
+  margin-top: 4rem;
+  margin-bottom: 0;
+  padding-top: 3rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+:is(.dark .peerup-cta-section) {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.peerup-cta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .peerup-cta-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.peerup-cta-card {
+  display: block;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: left;
+  text-decoration: none;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.peerup-cta-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+:is(.dark .peerup-cta-card) {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+:is(.dark .peerup-cta-card:hover) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: rgba(122, 162, 247, 0.3);
+}
+
+.peerup-cta-icon {
+  margin-bottom: 0.75rem;
+  color: #3b82f6;
+}
+
+:is(.dark .peerup-cta-icon) {
+  color: #7aa2f7;
+}
+
+.peerup-cta-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+
+:is(.dark .peerup-cta-title) {
+  color: #f9fafb;
+}
+
+.peerup-cta-desc {
+  font-size: 0.875rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+:is(.dark .peerup-cta-desc) {
+  color: #9ca3af;
+}
+
+/* ============================================================ */
+/* Blog listing — image cards with title overlay                 */
+/* ============================================================ */
+
+.peerup-blog-card {
+  display: block;
+  margin-bottom: 2rem;
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.peerup-blog-card:hover {
+  transform: translateY(-2px);
+}
+
+.peerup-blog-card-image-wrap {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.peerup-blog-card-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.peerup-blog-card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem 1.5rem 1.25rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.peerup-blog-card-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.peerup-blog-card-noimage {
+  padding: 2rem 1.5rem;
+  background: linear-gradient(135deg, #1e3a5f, #2563eb);
+}
+
+.peerup-blog-card-noimage .peerup-blog-card-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.peerup-blog-card-body {
+  padding: 1rem 1.5rem 1.25rem;
+}
+
+.peerup-blog-card-desc {
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+
+:is(.dark .peerup-blog-card-desc) {
+  color: #9ca3af;
+}
+
+.peerup-blog-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.peerup-blog-card-date {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+:is(.dark .peerup-blog-card-date) {
+  color: #6b7280;
+}
+
+.peerup-blog-card-readmore {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #3b82f6;
+}
+
+:is(.dark .peerup-blog-card-readmore) {
+  color: #7aa2f7;
 }

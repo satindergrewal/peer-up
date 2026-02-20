@@ -2,7 +2,10 @@
 title: "Connections That Don't Give Up"
 date: 2026-02-10
 tags: [release, batch-a]
+image: /images/blog/batch-a-reliability.svg
 ---
+
+![Connections That Don't Give Up](/images/blog/batch-a-reliability.svg)
 
 ## What's new
 
@@ -15,6 +18,8 @@ TCP proxies have proper timeout handling — dial timeouts for initial connectio
 P2P connections through circuit relay are inherently less reliable than direct connections. A proxy that dies on the first hiccup is useless for real work like SSH sessions or remote desktop. Automatic retry with backoff means you can start an SSH session through your relay and trust it to survive brief network interruptions.
 
 ## Technical highlights
+
+![Exponential backoff with cap — retry intervals double each attempt up to 60 seconds](/images/blog/batch-a-backoff-timeline.svg)
 
 - **Exponential backoff retry**: 1s → 2s → 4s → ... capped at 60s. Wraps any dial function via `DialWithRetry()`
 - **TCP timeout strategy**: 10s dial timeout, 30s service connection timeout. Long-lived sessions (SSH) are not killed by idle timers

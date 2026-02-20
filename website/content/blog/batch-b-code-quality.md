@@ -2,7 +2,10 @@
 title: "Clean Code, Clear Errors"
 date: 2026-02-12
 tags: [release, batch-b]
+image: /images/blog/batch-b-code-quality.svg
 ---
+
+![Clean Code, Clear Errors](/images/blog/batch-b-code-quality.svg)
 
 ## What's new
 
@@ -13,6 +16,8 @@ Every error in peer-up is now a named, checkable sentinel value. Structured logg
 When you're debugging a P2P connection issue at 2am, you need to know exactly which version is running on each peer and what went wrong. "Service not found" as a string is useless for programmatic error handling. `errors.Is(err, ErrServiceNotFound)` is actionable.
 
 ## Technical highlights
+
+![From printf to structured logging — before and after comparison](/images/blog/batch-b-structured-logging.svg)
 
 - **Sentinel errors**: `ErrServiceNotFound`, `ErrNameNotFound`, `ErrConfigNotFound`, `ErrNoArchive`, and more. All checkable with `errors.Is()`
 - **Structured logging**: `slog.Info("connection succeeded", "attempt", 3, "peer", peerID[:16]+"...")` — key-value pairs, not format strings

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="800" height="380">
+  <!-- Batch B In-Content: Before/After Structured Logging
+       Left: messy log.Printf strings
+       Right: clean slog key-value pairs -->
+  <!-- Background -->
+  <rect width="800" height="380" rx="12" fill="#0f1117"/>
+  <!-- Title -->
+  <text x="400" y="36" text-anchor="middle" fill="#a9b1d6" font-family="system-ui,sans-serif" font-size="15" font-weight="600">From Printf to Structured Logging</text>
+  <!-- BEFORE panel -->
+  <rect x="30" y="55" width="360" height="280" rx="8" fill="#1a1b26" stroke="#f7768e" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="210" y="80" text-anchor="middle" fill="#f7768e" font-family="system-ui,sans-serif" font-size="13" font-weight="600">BEFORE — log.Printf</text>
+  <!-- Before code lines -->
+  <text x="50" y="115" fill="#565f89" font-family="monospace" font-size="11">log.Printf(</text>
+  <text x="60" y="132" fill="#e0af68" font-family="monospace" font-size="11">"connection to %s failed: %v"</text>
+  <text x="60" y="149" fill="#565f89" font-family="monospace" font-size="11">, peerID, err)</text>
+  <text x="50" y="180" fill="#565f89" font-family="monospace" font-size="11">log.Printf(</text>
+  <text x="60" y="197" fill="#e0af68" font-family="monospace" font-size="11">"retry attempt %d for %s"</text>
+  <text x="60" y="214" fill="#565f89" font-family="monospace" font-size="11">, count, addr)</text>
+  <text x="50" y="248" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">Output:</text>
+  <text x="50" y="268" fill="#f7768e" font-family="monospace" font-size="10">2026/02/10 14:23:05 connection to</text>
+  <text x="50" y="283" fill="#f7768e" font-family="monospace" font-size="10">12D3KooW... failed: timeout</text>
+  <text x="50" y="306" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">— Not machine-parseable</text>
+  <text x="50" y="322" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">— No log levels</text>
+  <!-- Arrow -->
+  <path d="M 400 195 L 420 195" fill="none" stroke="#565f89" stroke-width="2"/>
+  <polygon points="418,189 430,195 418,201" fill="#565f89"/>
+  <!-- AFTER panel -->
+  <rect x="410" y="55" width="360" height="280" rx="8" fill="#1a1b26" stroke="#9ece6a" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="590" y="80" text-anchor="middle" fill="#9ece6a" font-family="system-ui,sans-serif" font-size="13" font-weight="600">AFTER — log/slog</text>
+  <!-- After code lines -->
+  <text x="430" y="115" fill="#7aa2f7" font-family="monospace" font-size="11">slog.Error(</text>
+  <text x="440" y="132" fill="#e0af68" font-family="monospace" font-size="11">"connection failed"</text>
+  <text x="430" y="149" fill="#565f89" font-family="monospace" font-size="11">)</text>
+  <text x="430" y="180" fill="#7aa2f7" font-family="monospace" font-size="11">slog.Info(</text>
+  <text x="440" y="197" fill="#e0af68" font-family="monospace" font-size="11">"retrying"</text>
+  <text x="440" y="214" fill="#bb9af7" font-family="monospace" font-size="11">"attempt", 3, "peer", id</text>
+  <text x="430" y="231" fill="#565f89" font-family="monospace" font-size="11">)</text>
+  <text x="430" y="256" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">Output:</text>
+  <text x="430" y="276" fill="#9ece6a" font-family="monospace" font-size="10">level=ERROR msg="connection failed"</text>
+  <text x="430" y="291" fill="#9ece6a" font-family="monospace" font-size="10">  peer=12D3.. err=timeout</text>
+  <text x="430" y="314" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">— Machine-parseable key=value</text>
+  <text x="430" y="330" fill="#565f89" font-family="monospace" font-size="10" font-style="italic">— Leveled (INFO/WARN/ERROR)</text>
+  <!-- Bottom summary -->
+  <text x="400" y="365" text-anchor="middle" fill="#565f89" font-family="system-ui,sans-serif" font-size="12">Every log line is now structured • Filterable by level and field • Zero external dependencies (stdlib slog)</text>
+</svg>

@@ -510,13 +510,16 @@ Waiting for transfers...
 **Website & Documentation (peerup.dev)**:
 - [x] Static documentation site built with [Hugo](https://gohugo.io/) + [Hextra](https://imfing.github.io/hextra/) theme — Go-based SSG, fast builds, matches the project toolchain, built-in search and dark mode
 - [x] Automated docs sync (`website/sync-docs.sh`) — transforms `docs/*.md` into Hugo-ready content with front matter and link rewriting
-- [x] Elegant landing page with hero section and feature grid
+- [x] Elegant landing page with visual storytelling — hero with problem-first hook, terminal demo section, 3-step "How It Works" grid, network diagram, tabbed install commands (macOS/Linux/source), bottom CTA grid *(enhanced post-Batch G)*
 - [x] Seven retroactive blog posts for Batches A-G (outcomes-focused)
 - [x] GitHub Actions CI/CD — build Hugo site and deploy to GitHub Pages on every push to `main`
 - [ ] GitHub Pages hosting with custom domain (`peerup.dev`) — DNS pointing pending
 - [ ] DNS managed on Cloudflare — CNAME `peerup.dev` → GitHub Pages, CNAME `get.peerup.dev` → serves install script
 - [x] Landing page — hero section, feature grid (NAT traversal, single binary, SSH trust, 60s pairing, TCP proxy, self-healing) *(Batch G)*
 - [x] Existing docs rendered as site pages — `sync-docs.sh` transforms ARCHITECTURE, FAQ, TESTING, ROADMAP, DAEMON-API, NETWORK-TOOLS, ENGINEERING-JOURNAL into Hugo-ready content *(Batch G)*
+- [x] Custom blog listing template — image cards with title overlay, gradient, responsive grid *(post-Batch G)*
+- [x] Dark theme default + theme toggle in navbar *(post-Batch G)*
+- [x] SVG placeholder images for terminal demo, how-it-works steps, network diagram — ready for real screenshots *(post-Batch G)*
 - [ ] `pkg/p2pnet` library reference (godoc-style or hand-written guides)
 - [ ] Use-case guides integrated into the site (GPU inference, IoT, game servers — see Launch Content below)
 - [ ] Install page with platform-specific instructions (curl, brew, apt, Docker, source)
@@ -903,6 +906,16 @@ peer-up is not a cheaper Tailscale. It's the **self-sovereign alternative** for 
 3. **Blog post**: *"Access your home GPU from anywhere through Starlink CGNAT"*
 4. **Demo video**: Phone → relay → home 5090 → streaming LLM response
 5. **Comparisons**: Honest peer-up vs Tailscale / Zerotier / Netbird posts
+
+### Community Infrastructure (set up at or before launch)
+
+- [ ] **Discord server** — Real-time community channel for support, feedback, development discussion. Link from website nav bar and README
+- [ ] **Showcase page** (`/showcase`) — Curated gallery of real-world peer-up deployments. Static JSON data file, rendered as cards. Add when users start sharing their setups (post-launch)
+- [ ] **Shoutouts page** (`/shoutouts`) — Testimonials from users. Static JSON, rendered as quote cards with attribution. Add when genuine testimonials exist (post-launch)
+- [ ] **Trust & Security page** (`/docs/trust`) — ✅ Created. Threat model, security controls, vulnerability reporting with response SLAs, audit history. Living document, community PRs welcome
+- [ ] **Separate `peer-up-trust` repo** — Structured threat model in YAML format (MITRE ATLAS-based). Community can submit PRs to improve threat coverage. Rendered on the website. Fallback: if GitHub goes down, mirror to GitLab (same pattern as code distribution resilience)
+- [ ] **Binary verification** — Ed25519-signed checksums + cosign/Sigstore signing for Go binaries. Stronger trust signal than most P2P projects offer
+- [ ] **Integrations page** (`/integrations`) — Curated catalog of what works with peer-up: services (Ollama, Jellyfin, Home Assistant, Minecraft, Sunshine/Moonlight), platforms (Docker, systemd, launchd), clients (SSH, XRDP, any TCP). Each entry: name, category, one-liner, config snippet, "works out of the box" badge. Inspired by OpenClaw's integrations page. Add progressively as use-case guides ship.
 
 ---
 
