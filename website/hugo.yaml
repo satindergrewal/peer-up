@@ -44,8 +44,8 @@ params:
     displayTitle: true
     displayLogo: true
     logo:
-      path: images/supermesh_logo_large.png
-      dark: images/supermesh_logo_large.png
+      path: images/logo.png
+      dark: images/logo.png
       width: 28
       height: 28
 
