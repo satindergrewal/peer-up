@@ -17,6 +17,13 @@ OUT_DIR="$SCRIPT_DIR/content/docs"
 # Ensure output directory exists
 mkdir -p "$OUT_DIR"
 
+# Sync doc images (docs/images/ -> website/static/images/docs/)
+if [[ -d "$DOCS_DIR/images" ]]; then
+  mkdir -p "$SCRIPT_DIR/static/images/docs"
+  cp -r "$DOCS_DIR/images/"* "$SCRIPT_DIR/static/images/docs/"
+  echo "  SYNC docs/images/ -> website/static/images/docs/"
+fi
+
 # GitHub repo base URL for linking to source files
 GITHUB_BASE="https://github.com/satindergrewal/peer-up/blob/main"
 
@@ -66,6 +73,9 @@ sync_doc() {
     # Also handle [text](FILENAME.md) pattern
     body="$(echo "$body" | sed "s|(${map_src})|(../${map_slug}/)|g")"
   done
+
+  # Rewrite image paths for Hugo: images/foo.svg -> /images/docs/foo.svg
+  body="$(echo "$body" | sed 's|](images/|](/images/docs/|g')"
 
   # Rewrite relative source file references to GitHub URLs
   # e.g., (../cmd/peerup/...) -> (https://github.com/.../cmd/peerup/...)

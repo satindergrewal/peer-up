@@ -124,77 +124,11 @@ peer-up/
 
 ### Network Topology (Current)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Internet                                │
-└─────────────────────────────────────────────────────────────┘
-                            │
-              ┌─────────────┼─────────────┐
-              │                           │
-              ▼                           ▼
-    ┌──────────────────┐        ┌──────────────────┐
-    │   Relay Server   │        │   Client Node    │
-    │      (VPS)       │        │  (Phone/Laptop)  │
-    │   Public IP      │        │   CGNAT/Mobile   │
-    └────────┬─────────┘        └─────────┬────────┘
-             │                            │
-             │ Circuit Relay v2           │
-             │ (hop protocol)             │
-             │                            │
-             └────────────┬───────────────┘
-                          │
-                          ▼
-                 ┌──────────────────┐
-                 │    Home Node     │
-                 │ (Behind Starlink)│
-                 │   CGNAT + IPv6   │
-                 │    Firewall      │
-                 └──────────────────┘
-```
-
-**Connection Flow**:
-1. Home node connects outbound to relay → makes reservation
-2. Client connects outbound to relay
-3. Client dials home via `/p2p-circuit` address
-4. Relay bridges connection (both sides outbound-only)
-5. DCUtR attempts hole-punching for direct upgrade
+![Network topology: Client and Home Node behind NAT, connected through Relay with optional direct path via DCUtR hole-punching](/images/docs/arch-network-topology.svg)
 
 ### Authentication Flow
 
-```
-Client Attempts Connection to Home Node
-         │
-         ▼
-   ┌──────────────────────────────────┐
-   │  libp2p Transport Handshake      │
-   │  (Noise protocol, key exchange)  │
-   └──────────────────┬───────────────┘
-                      │
-                      ▼
-        ┌─────────────────────────────┐
-        │  ConnectionGater.           │
-        │  InterceptSecured()         │
-        │                             │
-        │  Check peer ID against      │
-        │  authorized_keys            │
-        └──────────┬──────────────────┘
-                   │
-         ┌─────────┴─────────┐
-         │                   │
-         ▼                   ▼
-    ✅ Authorized      ❌ Unauthorized
-    Connection         Connection
-    Allowed            DENIED
-         │
-         ▼
-   ┌──────────────────────────────────┐
-   │  Protocol Handler                │
-   │  (defense-in-depth check)        │
-   │                                  │
-   │  if !authorizer.IsAuthorized():  │
-   │    close stream                  │
-   └──────────────────────────────────┘
-```
+![Authentication flow: Client → Noise handshake → ConnectionGater check → authorized or denied → protocol handler defense-in-depth](/images/docs/arch-auth-flow.svg)
 
 ### Peer Authorization Methods
 
@@ -258,49 +192,7 @@ peer-up/
 
 ### Service Exposure Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Application Layer (User's Services)                         │
-│  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐            │
-│  │  SSH   │  │  HTTP  │  │  SMB   │  │ Custom │            │
-│  │  :22   │  │  :80   │  │  :445  │  │ :9999  │            │
-│  └───┬────┘  └───┬────┘  └───┬────┘  └───┬────┘            │
-└──────┼───────────┼───────────┼───────────┼─────────────────┘
-       │           │           │           │
-       └───────────┴───────────┴───────────┘
-                   │
-                   ▼
-       ┌────────────────────────────┐
-       │   Service Registry         │
-       │   (pkg/p2pnet/service.go)  │
-       │                            │
-       │   "ssh"  → localhost:22    │
-       │   "web"  → localhost:80    │
-       │   "smb"  → localhost:445   │
-       │   "custom" → localhost:9999│
-       └────────────┬───────────────┘
-                    │
-                    ▼
-       ┌────────────────────────────┐
-       │   TCP ↔ Stream Proxy       │
-       │   (pkg/p2pnet/proxy.go)    │
-       │                            │
-       │   Bidirectional relay:     │
-       │   TCP socket ↔ libp2p      │
-       │   stream                   │
-       └────────────┬───────────────┘
-                    │
-                    ▼
-       ┌────────────────────────────┐
-       │   libp2p Network           │
-       │   (with authentication)    │
-       │                            │
-       │   Protocol:                │
-       │   /peerup/ssh/1.0.0        │
-       │   /peerup/http/1.0.0       │
-       │   /peerup/smb/1.0.0        │
-       └────────────────────────────┘
-```
+![Service exposure: 4-layer stack from Application (SSH/HTTP/SMB/Custom) through Service Registry and TCP-Stream Proxy to libp2p Network](/images/docs/arch-service-exposure.svg)
 
 ### Gateway Daemon Modes
 
@@ -704,39 +596,7 @@ federation:
 
 ### Multi-Tier Resolution
 
-```
-User Request: ssh user@laptop.grewal
-         │
-         ▼
-┌────────────────────────────────────┐
-│  Tier 1: Local Override            │
-│  Check: ~/.peerup/names.yaml       │
-│  laptop.grewal → 12D3KooW...       │
-└──────────┬─────────────────────────┘
-           │ Not found
-           ▼
-┌────────────────────────────────────┐
-│  Tier 2: Network-Scoped            │
-│  Parse: laptop.grewal              │
-│  Query: grewal relay for "laptop"  │
-│  Response: 12D3KooW...             │
-└──────────┬─────────────────────────┘
-           │ Relay unreachable
-           ▼
-┌────────────────────────────────────┐
-│  Tier 3: Blockchain (if enabled)   │
-│  Query: Ethereum smart contract    │
-│  grewal.register["laptop"]         │
-│  Response: 12D3KooW...             │
-└──────────┬─────────────────────────┘
-           │ Not registered
-           ▼
-┌────────────────────────────────────┐
-│  Tier 4: Direct Peer ID            │
-│  Try: peer.Decode("laptop.grewal") │
-│  Fails → Error: "Name not found"   │
-└────────────────────────────────────┘
-```
+![Name resolution waterfall: Local Override → Network-Scoped → Blockchain → Direct Peer ID, with fallthrough on each tier](/images/docs/arch-naming-system.svg)
 
 ### Network-Scoped Name Format
 
@@ -756,38 +616,7 @@ home.grewal.local       # mDNS compatible
 
 ### Relay Peering
 
-```
-┌──────────────────────────────────────────────────────┐
-│              Federated Networks                       │
-│                                                       │
-│  ┌─────────────┐      ┌─────────────┐               │
-│  │   grewal    │◄────►│    alice    │               │
-│  │   Network   │      │   Network   │               │
-│  └──────┬──────┘      └──────┬──────┘               │
-│         │                    │                       │
-│         └────────┬───────────┘                       │
-│                  │                                   │
-│                  ▼                                   │
-│         ┌─────────────┐                              │
-│         │     bob     │                              │
-│         │   Network   │                              │
-│         └─────────────┘                              │
-└──────────────────────────────────────────────────────┘
-
-Routing Table (grewal relay):
-- laptop.grewal     → direct (own network)
-- desktop.alice     → peer via alice relay
-- server.bob        → peer via bob relay
-- phone.alice       → peer via alice relay
-
-Cross-Network Connection:
-laptop.grewal → server.bob
-
-1. laptop connects to grewal relay
-2. grewal relay forwards to bob relay (federation)
-3. bob relay connects to server.bob
-4. Connection established
-```
+![Federation model: three networks (A, B, C) with relay peering — cross-network connections routed through federated relays](/images/docs/arch-federation.svg)
 
 ---
 
