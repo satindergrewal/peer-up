@@ -86,31 +86,37 @@ layout: hextra-home
 {{< hextra/feature-grid >}}
   {{< hextra/feature-card
     title="Works Through Anything"
+    icon="globe-alt"
     subtitle="5G, hotel WiFi, corporate networks, double NAT — if your device has internet, peer-up finds a way through. Tested on the networks that block everything."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(59,130,246,0.15),hsla(0,0%,100%,0));"
   >}}
   {{< hextra/feature-card
     title="One File, Nothing Else"
+    icon="cube"
     subtitle="Download one file. Run it. Done. No containers, no runtimes, no databases to set up. Works offline after the initial pairing."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(16,185,129,0.15),hsla(0,0%,100%,0));"
   >}}
   {{< hextra/feature-card
     title="You Control Who Connects"
+    icon="shield-check"
     subtitle="A simple file on your device decides who gets in. No accounts to manage, no tokens to rotate, no company in the middle. Your network, your rules."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(245,158,11,0.15),hsla(0,0%,100%,0));"
   >}}
   {{< hextra/feature-card
     title="Two Commands to Connect"
+    icon="terminal"
     subtitle="One command on your server, one on your laptop. Share a code, done. From zero to connected in about 60 seconds."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(139,92,246,0.15),hsla(0,0%,100%,0));"
   >}}
   {{< hextra/feature-card
     title="Access Any Service"
+    icon="server"
     subtitle="Remote desktop, file servers, databases, web apps — anything running on your home network, accessible from anywhere as if you were on the same WiFi."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(236,72,153,0.15),hsla(0,0%,100%,0));"
   >}}
   {{< hextra/feature-card
     title="Stays Connected"
+    icon="refresh"
     subtitle="Network drops? It reconnects automatically. Bad config? It rolls back. peer-up monitors itself and recovers without you lifting a finger."
     style="background: radial-gradient(ellipse at 50% 80%,rgba(20,184,166,0.15),hsla(0,0%,100%,0));"
   >}}
