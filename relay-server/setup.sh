@@ -850,6 +850,35 @@ fi
 run_sudo sysctl -w net.core.rmem_max=7500000 > /dev/null
 run_sudo sysctl -w net.core.wmem_max=7500000 > /dev/null
 echo "  Buffer sizes set to 7.5MB"
+
+# Reverse path filtering (anti-spoofing for QUIC source address verification)
+if ! grep -q 'net.ipv4.conf.all.rp_filter=1' /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.conf.all.rp_filter=1" | run_sudo tee -a /etc/sysctl.conf > /dev/null
+    echo "net.ipv4.conf.default.rp_filter=1" | run_sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+run_sudo sysctl -w net.ipv4.conf.all.rp_filter=1 > /dev/null
+run_sudo sysctl -w net.ipv4.conf.default.rp_filter=1 > /dev/null
+echo "  Reverse path filtering enabled (anti-spoofing)"
+
+# SYN cookies (protects against SYN flood attacks)
+if ! grep -q 'net.ipv4.tcp_syncookies=1' /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.tcp_syncookies=1" | run_sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+run_sudo sysctl -w net.ipv4.tcp_syncookies=1 > /dev/null
+echo "  SYN cookies enabled"
+
+# Conntrack tuning for relay workloads
+if ! grep -q 'net.netfilter.nf_conntrack_max=131072' /etc/sysctl.conf 2>/dev/null; then
+    {
+        echo "net.netfilter.nf_conntrack_max=131072"
+        echo "net.ipv4.tcp_tw_reuse=1"
+        echo "net.ipv4.tcp_fin_timeout=30"
+    } | run_sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+run_sudo sysctl -w net.netfilter.nf_conntrack_max=131072 > /dev/null 2>&1 || true
+run_sudo sysctl -w net.ipv4.tcp_tw_reuse=1 > /dev/null
+run_sudo sysctl -w net.ipv4.tcp_fin_timeout=30 > /dev/null
+echo "  Conntrack tuned (131072 max, tw_reuse, fin_timeout=30s)"
 echo
 
 # --- 3. Configure journald log rotation ---
@@ -952,6 +981,29 @@ else
     echo "  UFW not found  - manually open port 7777 TCP+UDP in your firewall"
 fi
 echo
+
+# --- 5.5. OS-level rate limiting (iptables) ---
+if command -v iptables > /dev/null 2>&1; then
+    echo "[5.5/8] Configuring iptables rate limiting..."
+
+    # TCP SYN flood protection
+    if ! run_sudo iptables -C INPUT -p tcp --syn -m limit --limit 50/s --limit-burst 100 -j ACCEPT 2>/dev/null; then
+        run_sudo iptables -A INPUT -p tcp --syn -m limit --limit 50/s --limit-burst 100 -j ACCEPT
+        echo "  TCP SYN rate limit: 50/s (burst 100)"
+    else
+        echo "  TCP SYN rate limit already configured"
+    fi
+
+    # UDP rate limiting (QUIC traffic)
+    if ! run_sudo iptables -C INPUT -p udp -m limit --limit 200/s --limit-burst 500 -j ACCEPT 2>/dev/null; then
+        run_sudo iptables -A INPUT -p udp -m limit --limit 200/s --limit-burst 500 -j ACCEPT
+        echo "  UDP rate limit: 200/s (burst 500)"
+    else
+        echo "  UDP rate limit already configured"
+    fi
+
+    echo
+fi
 
 # --- 5. Build ---
 echo "[6/8] Building peerup..."
