@@ -436,24 +436,24 @@ func (r *LocalFileResolver) Resolve(name string) (peer.ID, error) {
 
 ### Per-Service Authorization
 
-> **Status: Planned** - not yet implemented. Currently, all authorized peers can access all exposed services. Per-service access control is a deferred Phase 4C item. See [Roadmap](ROADMAP.md).
+> **Status: Implemented** (Pre-Batch H)
+
+Each service can optionally restrict access to specific peer IDs via `allowed_peers`. When set, only listed peers can connect to that service. When omitted (nil), all globally authorized peers can access it.
 
 ```yaml
-# home-node.yaml (planned config format)
-security:
-  authorized_keys_file: "authorized_keys"  # Global default
-
 services:
   ssh:
     enabled: true
     local_address: "localhost:22"
-    authorized_keys: "ssh_authorized_keys"  # Override (planned)
+    allowed_peers: ["12D3KooW..."]  # Only these peers can access SSH
 
   web:
     enabled: true
     local_address: "localhost:80"
-    # Uses global authorized_keys
+    # No allowed_peers = all authorized peers can access
 ```
+
+The ACL check runs in the stream handler before dialing the local TCP service, so rejected peers never trigger a connection to the backend.
 
 ### Federation Trust Model
 
@@ -633,11 +633,15 @@ Validated at four points:
 - ✅ OOM via unbounded stream reads (512-byte buffer limits)
 - ✅ Symlink attacks on temp files (os.CreateTemp with random suffix)
 - ✅ Multiaddr injection in config (validated before writing)
+- ✅ Per-service access control (AllowedPeers ACL on each service)
+- ✅ Host resource exhaustion (libp2p ResourceManager with auto-scaled limits)
+- ✅ SYN/UDP flood on relay (iptables rate limiting, SYN cookies, conntrack tuning)
+- ✅ IP spoofing on relay (reverse path filtering via rp_filter)
+- ✅ Runaway relay process (systemd cgroup limits: memory, CPU, tasks)
 
 **Threats NOT Addressed** (out of scope):
 - ❌ Relay compromise (relay can see metadata, not content)
 - ❌ Peer key compromise (users must secure private keys)
-- ❌ DoS attacks (rate limiting planned for future)
 
 ### Best Practices
 
