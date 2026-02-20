@@ -98,7 +98,7 @@ You'll see logs indicating the incoming connection:
 
 ### Service Exposure Pattern
 ```go
-net.ExposeService("http", "localhost:8080")
+net.ExposeService("http", "localhost:8080", nil)
 ```
 - Maps local TCP service to P2P protocol
 - Automatic stream handling

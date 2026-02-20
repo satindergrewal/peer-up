@@ -303,7 +303,7 @@ net, _ := p2pnet.New(&p2pnet.Config{
 })
 
 // Expose a local service
-net.ExposeService("api", "localhost:8080")
+net.ExposeService("api", "localhost:8080", nil)
 
 // Connect to a peer's service
 conn, _ := net.ConnectToService(peerID, "api")
