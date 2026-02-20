@@ -1,6 +1,6 @@
 ---
 title: "FAQ"
-weight: 4
+weight: 2
 ---
 <!-- Auto-synced from docs/FAQ.md by sync-docs.sh — do not edit directly -->
 

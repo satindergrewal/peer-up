@@ -28,15 +28,18 @@ fi
 GITHUB_BASE="https://github.com/satindergrewal/peer-up/blob/main"
 
 # Map: source filename -> output filename:weight:title
+# Order follows the user journey (Jobs/Musk/Satinder principles):
+#   Use it → Explore it → Understand it → Automate it → Deep dive → Vision → Contribute → History
 declare -A DOC_MAP
 DOC_MAP=(
-  ["ARCHITECTURE.md"]="architecture.md:1:Architecture"
-  ["DAEMON-API.md"]="daemon-api.md:2:Daemon API"
-  ["NETWORK-TOOLS.md"]="network-tools.md:3:Network Tools"
-  ["FAQ.md"]="faq.md:4:FAQ"
-  ["TESTING.md"]="testing.md:5:Testing"
+  ["NETWORK-TOOLS.md"]="network-tools.md:1:Network Tools"
+  ["FAQ.md"]="faq.md:2:FAQ"
+  # weight 3 = Trust & Security (standalone page, not synced from docs/)
+  ["DAEMON-API.md"]="daemon-api.md:4:Daemon API"
+  ["ARCHITECTURE.md"]="architecture.md:5:Architecture"
   ["ROADMAP.md"]="roadmap.md:6:Roadmap"
-  ["ENGINEERING-JOURNAL.md"]="engineering-journal.md:7:Engineering Journal"
+  ["TESTING.md"]="testing.md:7:Testing"
+  ["ENGINEERING-JOURNAL.md"]="engineering-journal.md:8:Engineering Journal"
 )
 
 sync_doc() {
@@ -150,5 +153,45 @@ done
 
 # Sync quick-start from README
 sync_quickstart
+
+# Generate llms-full.txt — single-file concatenation of all docs for AI agents.
+# Follows the llmstxt.org spec: one fetch gets everything.
+# Order: README (overview) → docs in user-journey order.
+generate_llms_full() {
+  local llms_full="$SCRIPT_DIR/static/llms-full.txt"
+  local readme="$(dirname "$SCRIPT_DIR")/README.md"
+
+  # Doc files in user-journey order (matches sidebar weights)
+  local -a doc_order=(
+    "NETWORK-TOOLS.md"
+    "FAQ.md"
+    "DAEMON-API.md"
+    "ARCHITECTURE.md"
+    "ROADMAP.md"
+    "TESTING.md"
+    "ENGINEERING-JOURNAL.md"
+  )
+
+  {
+    # Start with README as the overview
+    if [[ -f "$readme" ]]; then
+      cat "$readme"
+      printf '\n\n---\n\n'
+    fi
+
+    # Append each doc with a separator
+    for doc_file in "${doc_order[@]}"; do
+      local doc_path="$DOCS_DIR/$doc_file"
+      if [[ -f "$doc_path" ]]; then
+        cat "$doc_path"
+        printf '\n\n---\n\n'
+      fi
+    done
+  } > "$llms_full"
+
+  echo "  SYNC llms-full.txt ($(wc -c < "$llms_full" | tr -d ' ') bytes)"
+}
+
+generate_llms_full
 
 echo "Done. $(ls "$OUT_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ') files synced."

@@ -1,6 +1,6 @@
 ---
 title: "Daemon API"
-weight: 2
+weight: 4
 ---
 <!-- Auto-synced from docs/DAEMON-API.md by sync-docs.sh — do not edit directly -->
 
