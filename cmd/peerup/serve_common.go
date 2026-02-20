@@ -111,11 +111,12 @@ func newServeRuntime(ctx context.Context, cancel context.CancelFunc, configFlag,
 		Gater:              rt.gater,
 		Config:             &config.Config{Network: cfg.Network},
 		UserAgent:          "peerup/" + ver,
-		EnableRelay:        true,
-		RelayAddrs:         cfg.Relay.Addresses,
-		ForcePrivate:       cfg.Network.ForcePrivateReachability,
-		EnableNATPortMap:   true,
-		EnableHolePunching: true,
+		EnableRelay:           true,
+		RelayAddrs:            cfg.Relay.Addresses,
+		ForcePrivate:          cfg.Network.ForcePrivateReachability,
+		EnableNATPortMap:      true,
+		EnableHolePunching:    true,
+		ResourceLimitsEnabled: cfg.Network.ResourceLimitsEnabled,
 	}
 
 	net, err := p2pnet.New(netCfg)
@@ -284,7 +285,23 @@ func (rt *serveRuntime) ExposeConfiguredServices() {
 	for name, svc := range rt.config.Services {
 		if svc.Enabled {
 			fmt.Printf("Exposing service: %s -> %s\n", name, svc.LocalAddress)
-			if err := rt.network.ExposeService(name, svc.LocalAddress); err != nil {
+
+			// Convert AllowedPeers string slice to peer.ID set
+			var allowedPeers map[peer.ID]struct{}
+			if len(svc.AllowedPeers) > 0 {
+				allowedPeers = make(map[peer.ID]struct{}, len(svc.AllowedPeers))
+				for _, pidStr := range svc.AllowedPeers {
+					pid, err := peer.Decode(pidStr)
+					if err != nil {
+						log.Printf("Invalid peer ID %q in allowed_peers for %s: %v", pidStr, name, err)
+						continue
+					}
+					allowedPeers[pid] = struct{}{}
+				}
+				fmt.Printf("  ACL: %d allowed peers\n", len(allowedPeers))
+			}
+
+			if err := rt.network.ExposeService(name, svc.LocalAddress, allowedPeers); err != nil {
 				log.Printf("Failed to expose service %s: %v", name, err)
 			}
 		}

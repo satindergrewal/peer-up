@@ -57,6 +57,7 @@ type IdentityConfig struct {
 type NetworkConfig struct {
 	ListenAddresses          []string `yaml:"listen_addresses"`
 	ForcePrivateReachability bool     `yaml:"force_private_reachability"`
+	ResourceLimitsEnabled    bool     `yaml:"resource_limits_enabled"`
 }
 
 // RelayNetworkConfig holds relay server network configuration
@@ -117,9 +118,10 @@ type ServicesConfig map[string]ServiceConfig
 
 // ServiceConfig holds configuration for a single exposed service
 type ServiceConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	LocalAddress string `yaml:"local_address"`
-	Protocol     string `yaml:"protocol,omitempty"` // Optional custom protocol ID
+	Enabled      bool     `yaml:"enabled"`
+	LocalAddress string   `yaml:"local_address"`
+	Protocol     string   `yaml:"protocol,omitempty"`        // Optional custom protocol ID
+	AllowedPeers []string `yaml:"allowed_peers,omitempty"`   // Restrict to specific peer IDs (nil = all authorized peers)
 }
 
 // NamesConfig holds name resolution configuration

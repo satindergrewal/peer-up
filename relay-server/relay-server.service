@@ -38,6 +38,11 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 
+# Resource limits - prevent runaway memory/CPU
+MemoryMax=512M
+CPUQuota=200%
+TasksMax=4096
+
 # Allow read/write only to the working directory (for key file, config, logs)
 ReadWritePaths=/home/YOUR_USERNAME/peer-up/relay-server
 

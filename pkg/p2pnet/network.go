@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -90,6 +91,9 @@ type Config struct {
 	ForcePrivate        bool              // Force private reachability (required for relay reservations)
 	EnableNATPortMap    bool              // Enable NAT port mapping
 	EnableHolePunching  bool              // Enable hole punching
+
+	// Resource management
+	ResourceLimitsEnabled bool            // Enable libp2p resource manager (connection/stream/memory limits)
 }
 
 // New creates a new P2P network instance
@@ -153,6 +157,20 @@ func New(cfg *Config) (*Network, error) {
 		}
 	}
 
+	// Add resource manager if enabled (bounds connections, streams, memory)
+	if cfg.ResourceLimitsEnabled {
+		limits := rcmgr.DefaultLimits
+		libp2p.SetDefaultServiceLimits(&limits)
+		scaled := limits.AutoScale()
+		rm, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(scaled))
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create resource manager: %w", err)
+		}
+		hostOpts = append(hostOpts, libp2p.ResourceManager(rm))
+		slog.Info("resource manager enabled", "limits", "auto-scaled")
+	}
+
 	// Add connection gater: use pre-created Gater if provided (enables hot-reload),
 	// otherwise auto-create from AuthorizedKeys file path (simpler for commands that
 	// don't need runtime auth management).
@@ -198,8 +216,9 @@ func (n *Network) PeerID() peer.ID {
 	return n.host.ID()
 }
 
-// ExposeService exposes a local TCP service through the P2P network
-func (n *Network) ExposeService(name, localAddress string) error {
+// ExposeService exposes a local TCP service through the P2P network.
+// If allowedPeers is nil, all authorized peers can access the service.
+func (n *Network) ExposeService(name, localAddress string, allowedPeers map[peer.ID]struct{}) error {
 	if err := ValidateServiceName(name); err != nil {
 		return err
 	}
@@ -208,6 +227,7 @@ func (n *Network) ExposeService(name, localAddress string) error {
 		Protocol:     fmt.Sprintf("/peerup/%s/1.0.0", name),
 		LocalAddress: localAddress,
 		Enabled:      true,
+		AllowedPeers: allowedPeers,
 	})
 }
 
