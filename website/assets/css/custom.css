@@ -18,6 +18,25 @@
 }
 
 /* ============================================================ */
+/* Hero logo — SuperMesh globe above the badge                   */
+/* ============================================================ */
+
+.peerup-hero-logo {
+  margin-bottom: 1.5rem;
+}
+
+.peerup-hero-logo img {
+  width: 96px;
+  height: 96px;
+  border-radius: 20%;
+  transition: transform 0.3s ease;
+}
+
+.peerup-hero-logo img:hover {
+  transform: scale(1.05);
+}
+
+/* ============================================================ */
 /* Hero hook — problem-first line above headline                 */
 /* ============================================================ */
 

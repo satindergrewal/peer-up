@@ -42,7 +42,12 @@ params:
 
   navbar:
     displayTitle: true
-    displayLogo: false
+    displayLogo: true
+    logo:
+      path: images/supermesh_logo_large.png
+      dark: images/supermesh_logo_large.png
+      width: 28
+      height: 28
 
   page:
     width: wide

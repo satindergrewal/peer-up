@@ -3,6 +3,10 @@ title: peer-up
 layout: hextra-home
 ---
 
+<div class="peerup-hero-logo">
+  <img src="/peer-up/images/supermesh_logo_large.png" alt="peer-up logo" width="96" height="96" />
+</div>
+
 {{< hextra/hero-badge >}}
   <div class="hx:w-2 hx:h-2 hx:rounded-full hx:bg-primary-400"></div>
   <span>Open source &middot; Self-sovereign</span>
