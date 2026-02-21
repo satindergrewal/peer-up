@@ -80,10 +80,15 @@ func runJoin(args []string) {
 	outln()
 	out("Relay:   %s\n", data.RelayAddr)
 	out("Inviter: %s\n", data.PeerID.String()[:16]+"...")
+	if data.Network != "" {
+		out("Network: %s\n", data.Network)
+	}
 	outln()
 
-	// Resolve config  - create one if it doesn't exist
-	cfgFile, cfg, configDir, created := loadOrCreateConfig(*configFlag, data.RelayAddr)
+	// Resolve config - create one if it doesn't exist.
+	// Pass the network namespace from the invite code so the joiner
+	// auto-inherits the inviter's private DHT network.
+	cfgFile, cfg, configDir, created := loadOrCreateConfig(*configFlag, data.RelayAddr, data.Network)
 	if created {
 		out("Created new config: %s\n", cfgFile)
 	} else {
@@ -144,38 +149,14 @@ func runJoin(args []string) {
 	}
 	defer s.Close()
 
-	// Send: <token_hex> <our_name>\n
-	tokenHex := hex.EncodeToString(data.Token[:])
 	joinerName := *nameFlag
-	msg := tokenHex
-	if joinerName != "" {
-		msg += " " + joinerName
-	}
-	s.Write([]byte(msg + "\n"))
+	var inviterName string
 
-	// Read response (limit to 512 bytes to prevent OOM from malicious inviter)
-	scanner := bufio.NewScanner(s)
-	scanner.Buffer(make([]byte, 512), 512)
-	if !scanner.Scan() {
-		err := scanner.Err()
-		if err != nil {
-			fatal("Failed to read response from inviter: %v", err)
-		}
-		fatal("No response from inviter (connection closed)")
+	if data.Version == invite.VersionV2 {
+		inviterName = joinV2(s, data.Token, joinerName)
+	} else {
+		inviterName = joinV1(s, data.Token, joinerName)
 	}
-	response := strings.TrimSpace(scanner.Text())
-
-	if strings.HasPrefix(response, "ERR") {
-		fatal("Invite rejected: %s", response)
-	}
-
-	if !strings.HasPrefix(response, "OK") {
-		fatal("Unexpected response: %s", response)
-	}
-
-	// Parse inviter name from "OK <name>"
-	inviterName := strings.TrimPrefix(response, "OK")
-	inviterName = strings.TrimSpace(inviterName)
 
 	// Add inviter to our authorized_keys
 	authKeysPath := cfg.Security.AuthorizedKeysFile
@@ -212,10 +193,96 @@ func runJoin(args []string) {
 	}
 }
 
+// joinV2 performs the PAKE-secured handshake (v2 invite protocol).
+// Returns the inviter's name.
+func joinV2(s network.Stream, token [8]byte, joinerName string) string {
+	// Create PAKE session
+	session, err := invite.NewPAKESession()
+	if err != nil {
+		fatal("PAKE session error: %v", err)
+	}
+
+	// Send: [0x02] [32-byte X25519 public key]
+	if _, err := s.Write([]byte{invite.VersionV2}); err != nil {
+		fatal("Failed to send version byte: %v", err)
+	}
+	if err := session.WritePublicKey(s); err != nil {
+		fatal("Failed to send public key: %v", err)
+	}
+
+	// Read inviter's public key (32 bytes)
+	inviterPub, err := invite.ReadPublicKey(s)
+	if err != nil {
+		fatal("Failed to read inviter public key: %v", err)
+	}
+
+	// Complete DH exchange with token binding
+	if err := session.Complete(inviterPub, token); err != nil {
+		fatal("PAKE key exchange failed: %v", err)
+	}
+
+	// Send encrypted joiner name
+	if err := session.WriteEncrypted(s, []byte(joinerName)); err != nil {
+		fatal("Failed to send encrypted name: %v", err)
+	}
+
+	// Read encrypted response
+	responseBytes, err := session.Decrypt(s)
+	if err != nil {
+		fatal("Failed to decrypt response (wrong invite code?): %v", err)
+	}
+	response := string(responseBytes)
+
+	if strings.HasPrefix(response, "ERR") {
+		fatal("Invite rejected: %s", response)
+	}
+	if !strings.HasPrefix(response, "OK") {
+		fatal("Unexpected response: %s", response)
+	}
+
+	inviterName := strings.TrimPrefix(response, "OK")
+	return strings.TrimSpace(inviterName)
+}
+
+// joinV1 performs the original cleartext handshake (v1 invite protocol).
+// Returns the inviter's name.
+func joinV1(s network.Stream, token [8]byte, joinerName string) string {
+	// Send: <token_hex> <our_name>\n
+	tokenHex := hex.EncodeToString(token[:])
+	msg := tokenHex
+	if joinerName != "" {
+		msg += " " + joinerName
+	}
+	s.Write([]byte(msg + "\n"))
+
+	// Read response (limit to 512 bytes to prevent OOM from malicious inviter)
+	scanner := bufio.NewScanner(s)
+	scanner.Buffer(make([]byte, 512), 512)
+	if !scanner.Scan() {
+		err := scanner.Err()
+		if err != nil {
+			fatal("Failed to read response from inviter: %v", err)
+		}
+		fatal("No response from inviter (connection closed)")
+	}
+	response := strings.TrimSpace(scanner.Text())
+
+	if strings.HasPrefix(response, "ERR") {
+		fatal("Invite rejected: %s", response)
+	}
+	if !strings.HasPrefix(response, "OK") {
+		fatal("Unexpected response: %s", response)
+	}
+
+	inviterName := strings.TrimPrefix(response, "OK")
+	return strings.TrimSpace(inviterName)
+}
+
 // loadOrCreateConfig tries to load an existing config, or creates a minimal one
-// using the relay address from the invite code. Returns the config file path,
-// loaded config, config directory, and whether a new config was created.
-func loadOrCreateConfig(explicitConfig, relayAddr string) (string, *config.NodeConfig, string, bool) {
+// using the relay address and network namespace from the invite code. Returns
+// the config file path, loaded config, config directory, and whether a new
+// config was created.
+func loadOrCreateConfig(explicitConfig, relayAddr, networkNS string) (string, *config.NodeConfig, string, bool) {
 	// Try loading existing config
 	cfgFile, err := config.FindConfigFile(explicitConfig)
 	if err == nil {
@@ -260,7 +327,7 @@ func loadOrCreateConfig(explicitConfig, relayAddr string) (string, *config.NodeC
 
 	// Write config
 	cfgFile = filepath.Join(configDir, "config.yaml")
-	configContent := nodeConfigTemplate(relayAddr, "peerup join")
+	configContent := nodeConfigTemplate(relayAddr, "peerup join", networkNS)
 
 	if err := os.WriteFile(cfgFile, []byte(configContent), 0600); err != nil {
 		fatal("Failed to write config: %v", err)

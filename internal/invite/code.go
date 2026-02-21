@@ -17,9 +17,11 @@ var encoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 
 // InviteData holds the payload encoded in an invite code.
 type InviteData struct {
+	Version   byte    // protocol version (VersionV1 or VersionV2)
 	Token     [8]byte
 	RelayAddr string  // full relay multiaddr (e.g., /ip4/.../tcp/.../p2p/...)
 	PeerID    peer.ID // inviter's peer ID
+	Network   string  // DHT namespace (empty = global network, v2 only)
 }
 
 // GenerateToken creates a cryptographically random 8-byte token.
@@ -35,8 +37,21 @@ func TokenHex(t [8]byte) string {
 }
 
 // Encode serializes invite data into a compact, dash-separated base32 code.
+// Produces v2 format by default (includes namespace field).
 //
-// Binary format:
+// v2 binary format:
+//
+//	[1] version (0x02)
+//	[8] token
+//	[4] relay IPv4
+//	[2] relay TCP port (big-endian)
+//	[1] relay peer ID length
+//	[N] relay peer ID (raw multihash bytes)
+//	[1] namespace length (0 = global network)
+//	[L] namespace bytes (if length > 0)
+//	[M] inviter peer ID (raw multihash bytes, remaining bytes)
+//
+// v1 binary format (legacy):
 //
 //	[1] version (0x01)
 //	[8] token
@@ -81,14 +96,46 @@ func Encode(data *InviteData) (string, error) {
 	relayIDBytes := []byte(relayPeerID)
 	inviterIDBytes := []byte(data.PeerID)
 
-	buf := make([]byte, 0, 1+8+4+2+1+len(relayIDBytes)+len(inviterIDBytes))
-	buf = append(buf, 0x01) // version
-	buf = append(buf, data.Token[:]...)
-	buf = append(buf, ip...)
-	buf = append(buf, byte(port>>8), byte(port))
-	buf = append(buf, byte(len(relayIDBytes)))
-	buf = append(buf, relayIDBytes...)
-	buf = append(buf, inviterIDBytes...)
+	// Determine version: default to v2
+	ver := data.Version
+	if ver == 0 {
+		ver = VersionV2
+	}
+
+	// Validate namespace length
+	if len(data.Network) > 63 {
+		return "", fmt.Errorf("network namespace too long: %d bytes (max 63)", len(data.Network))
+	}
+
+	var buf []byte
+
+	switch ver {
+	case VersionV1:
+		buf = make([]byte, 0, 1+8+4+2+1+len(relayIDBytes)+len(inviterIDBytes))
+		buf = append(buf, VersionV1)
+		buf = append(buf, data.Token[:]...)
+		buf = append(buf, ip...)
+		buf = append(buf, byte(port>>8), byte(port))
+		buf = append(buf, byte(len(relayIDBytes)))
+		buf = append(buf, relayIDBytes...)
+		buf = append(buf, inviterIDBytes...)
+
+	case VersionV2:
+		nsBytes := []byte(data.Network)
+		buf = make([]byte, 0, 1+8+4+2+1+len(relayIDBytes)+1+len(nsBytes)+len(inviterIDBytes))
+		buf = append(buf, VersionV2)
+		buf = append(buf, data.Token[:]...)
+		buf = append(buf, ip...)
+		buf = append(buf, byte(port>>8), byte(port))
+		buf = append(buf, byte(len(relayIDBytes)))
+		buf = append(buf, relayIDBytes...)
+		buf = append(buf, byte(len(nsBytes)))
+		buf = append(buf, nsBytes...)
+		buf = append(buf, inviterIDBytes...)
+
+	default:
+		return "", fmt.Errorf("unsupported invite code version: %d", ver)
+	}
 
 	encoded := encoding.EncodeToString(buf)
 
@@ -105,6 +152,7 @@ func Encode(data *InviteData) (string, error) {
 }
 
 // Decode parses a dash-separated base32 invite code back into InviteData.
+// Supports both v1 and v2 formats.
 func Decode(code string) (*InviteData, error) {
 	clean := strings.ReplaceAll(code, "-", "")
 	clean = strings.ReplaceAll(clean, " ", "")
@@ -120,11 +168,24 @@ func Decode(code string) (*InviteData, error) {
 		return nil, fmt.Errorf("invite code too short")
 	}
 
-	if raw[0] != 0x01 {
-		return nil, fmt.Errorf("unsupported invite code version: %d", raw[0])
+	ver := raw[0]
+	switch ver {
+	case VersionV1:
+		return decodeV1(raw)
+	case VersionV2:
+		return decodeV2(raw)
+	default:
+		if ver > VersionV2 {
+			return nil, fmt.Errorf("invite code version %d is newer than supported; please upgrade peerup", ver)
+		}
+		return nil, fmt.Errorf("unsupported invite code version: %d", ver)
 	}
+}
 
+// decodeV1 parses the original v1 invite code format (no namespace).
+func decodeV1(raw []byte) (*InviteData, error) {
 	var data InviteData
+	data.Version = VersionV1
 	copy(data.Token[:], raw[1:9])
 
 	ip := net.IPv4(raw[9], raw[10], raw[11], raw[12])
@@ -138,28 +199,76 @@ func Decode(code string) (*InviteData, error) {
 	relayPeerID := peer.ID(raw[16 : 16+relayIDLen])
 	inviterPeerID := peer.ID(raw[16+relayIDLen:])
 
-	// Validate peer IDs: basic multihash check
-	if err := relayPeerID.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid relay peer ID in invite code: %w", err)
-	}
-	if err := inviterPeerID.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid inviter peer ID in invite code: %w", err)
-	}
-
-	// Strict check: reject trailing data after the inviter multihash.
-	// Go's base32 NoPadding decoder silently accepts extra characters,
-	// so we must verify the byte slice is exactly one valid multihash.
-	if err := strictMultihashLen([]byte(relayPeerID)); err != nil {
-		return nil, fmt.Errorf("invalid relay peer ID in invite code: %w", err)
-	}
-	if err := strictMultihashLen([]byte(inviterPeerID)); err != nil {
-		return nil, fmt.Errorf("invalid inviter peer ID in invite code: %w", err)
+	if err := validatePeerIDs(relayPeerID, inviterPeerID); err != nil {
+		return nil, err
 	}
 
 	data.RelayAddr = fmt.Sprintf("/ip4/%s/tcp/%d/p2p/%s", ip.String(), port, relayPeerID.String())
 	data.PeerID = inviterPeerID
 
 	return &data, nil
+}
+
+// decodeV2 parses v2 invite codes (includes namespace field).
+func decodeV2(raw []byte) (*InviteData, error) {
+	var data InviteData
+	data.Version = VersionV2
+	copy(data.Token[:], raw[1:9])
+
+	ip := net.IPv4(raw[9], raw[10], raw[11], raw[12])
+	port := int(raw[13])<<8 | int(raw[14])
+
+	relayIDLen := int(raw[15])
+	offset := 16 + relayIDLen
+
+	// v2 adds: [1] namespace length + [L] namespace bytes
+	if len(raw) < offset+1 {
+		return nil, fmt.Errorf("invite code truncated (missing namespace length)")
+	}
+
+	nsLen := int(raw[offset])
+	offset++
+
+	if len(raw) < offset+nsLen+1 {
+		return nil, fmt.Errorf("invite code truncated (namespace data)")
+	}
+
+	if nsLen > 0 {
+		data.Network = string(raw[offset : offset+nsLen])
+	}
+	offset += nsLen
+
+	relayPeerID := peer.ID(raw[16 : 16+relayIDLen])
+	inviterPeerID := peer.ID(raw[offset:])
+
+	if err := validatePeerIDs(relayPeerID, inviterPeerID); err != nil {
+		return nil, err
+	}
+
+	data.RelayAddr = fmt.Sprintf("/ip4/%s/tcp/%d/p2p/%s", ip.String(), port, relayPeerID.String())
+	data.PeerID = inviterPeerID
+
+	return &data, nil
+}
+
+// validatePeerIDs checks both relay and inviter peer IDs for validity.
+func validatePeerIDs(relayPeerID, inviterPeerID peer.ID) error {
+	if err := relayPeerID.Validate(); err != nil {
+		return fmt.Errorf("invalid relay peer ID in invite code: %w", err)
+	}
+	if err := inviterPeerID.Validate(); err != nil {
+		return fmt.Errorf("invalid inviter peer ID in invite code: %w", err)
+	}
+
+	// Strict check: reject trailing data after the multihash.
+	if err := strictMultihashLen([]byte(relayPeerID)); err != nil {
+		return fmt.Errorf("invalid relay peer ID in invite code: %w", err)
+	}
+	if err := strictMultihashLen([]byte(inviterPeerID)); err != nil {
+		return fmt.Errorf("invalid inviter peer ID in invite code: %w", err)
+	}
+
+	return nil
 }
 
 // strictMultihashLen verifies that buf is exactly one multihash with no

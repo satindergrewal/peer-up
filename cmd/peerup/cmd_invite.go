@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -63,7 +64,7 @@ func runInvite(args []string) {
 		fatal("Failed to generate token: %v", err)
 	}
 
-	// Create P2P network (no connection gating  - we need the joiner to reach us)
+	// Create P2P network (no connection gating - we need the joiner to reach us)
 	p2pNetwork, err := p2pnet.New(&p2pnet.Config{
 		KeyFile:            cfg.Identity.KeyFile,
 		Config:             &config.Config{Network: cfg.Network},
@@ -102,11 +103,12 @@ func runInvite(args []string) {
 	case <-time.After(3 * time.Second):
 	}
 
-	// Encode invite
+	// Encode invite (v2 format with namespace)
 	inviteData := &invite.InviteData{
 		Token:     token,
 		RelayAddr: cfg.Relay.Addresses[0],
 		PeerID:    h.ID(),
+		Network:   cfg.Discovery.Network,
 	}
 	code, err := invite.Encode(inviteData)
 	if err != nil {
@@ -136,64 +138,33 @@ func runInvite(args []string) {
 	outln()
 	outln("Waiting for peer to join...")
 
-	// Set up invite protocol handler
+	// Set up invite protocol handler (supports both v1 and v2)
 	joined := make(chan string, 1) // receives joiner's name
 
 	h.SetStreamHandler(protocol.ID(inviteProtocol), func(s network.Stream) {
 		defer s.Close()
 		remotePeer := s.Conn().RemotePeer()
 
-		// Read: <token_hex> <joiner_name>\n
-		// Limit read to 512 bytes to prevent OOM from a malicious peer
-		// sending unbounded data without a newline.
-		scanner := bufio.NewScanner(s)
-		scanner.Buffer(make([]byte, 512), 512)
-		if !scanner.Scan() {
-			log.Printf("Invite stream read error: %v", scanner.Err())
-			s.Write([]byte("ERR read error\n"))
-			return
-		}
-		line := scanner.Text()
-		parts := strings.SplitN(strings.TrimSpace(line), " ", 2)
-		receivedToken := parts[0]
-		joinerName := ""
-		if len(parts) > 1 {
-			joinerName = parts[1]
-		}
-
-		// Verify token
-		expectedHex := hex.EncodeToString(token[:])
-		if receivedToken != expectedHex {
-			log.Printf("Invalid token from %s", remotePeer.String()[:16])
-			s.Write([]byte("ERR invalid token\n"))
+		// Peek at first byte to determine protocol version.
+		// v2 starts with 0x02 (PAKE handshake), v1 starts with ASCII hex (0x30-0x66).
+		var firstByte [1]byte
+		if _, err := io.ReadFull(s, firstByte[:]); err != nil {
+			log.Printf("Invite stream read error: %v", err)
 			return
 		}
 
-		// Add joiner to authorized_keys
-		comment := joinerName
-		if comment == "" {
-			comment = "joined-" + time.Now().Format("2006-01-02")
-		}
-		authKeysPath := cfg.Security.AuthorizedKeysFile
-		if err := auth.AddPeer(authKeysPath, remotePeer.String(), comment); err != nil {
-			if strings.Contains(err.Error(), "already authorized") {
-				log.Printf("Peer already authorized: %s", remotePeer.String()[:16])
-			} else {
-				log.Printf("Failed to authorize peer: %v", err)
-				s.Write([]byte("ERR server error\n"))
-				return
-			}
+		var joinerName string
+		var success bool
+
+		if firstByte[0] == invite.VersionV2 {
+			joinerName, success = handleInviteV2(s, token, *nameFlag, remotePeer.String(), cfg.Security.AuthorizedKeysFile)
+		} else {
+			joinerName, success = handleInviteV1(s, firstByte[0], token, *nameFlag, remotePeer.String(), cfg.Security.AuthorizedKeysFile)
 		}
 
-		// Send confirmation: OK <inviter_name>\n
-		inviterName := *nameFlag
-		s.Write([]byte(fmt.Sprintf("OK %s\n", inviterName)))
-
-		// Allow the response to flush through the relay circuit before
-		// the deferred s.Close() fires and the host potentially shuts down.
-		time.Sleep(2 * time.Second)
-
-		joined <- joinerName
+		if success {
+			joined <- joinerName
+		}
 	})
 
 	// Wait for join or timeout/interrupt
@@ -217,4 +188,121 @@ func runInvite(args []string) {
 	case <-sigCh:
 		outln("\nCancelled.")
 	}
+}
+
+// handleInviteV2 processes a v2 PAKE handshake on the invite stream.
+// Returns the joiner's name and whether authorization succeeded.
+func handleInviteV2(s network.Stream, token [8]byte, inviterName, remotePeerStr, authKeysPath string) (string, bool) {
+	// Read joiner's X25519 public key (32 bytes follow the version byte)
+	joinerPub, err := invite.ReadPublicKey(s)
+	if err != nil {
+		log.Printf("v2: failed to read joiner public key from %s: %v", remotePeerStr[:16], err)
+		return "", false
+	}
+
+	// Create our PAKE session and send our public key
+	session, err := invite.NewPAKESession()
+	if err != nil {
+		log.Printf("v2: PAKE session error: %v", err)
+		return "", false
+	}
+
+	if err := session.WritePublicKey(s); err != nil {
+		log.Printf("v2: failed to send public key: %v", err)
+		return "", false
+	}
+
+	// Complete DH exchange with token binding
+	if err := session.Complete(joinerPub, token); err != nil {
+		log.Printf("v2: PAKE key exchange failed from %s: %v", remotePeerStr[:16], err)
+		return "", false
+	}
+
+	// Read encrypted joiner name
+	joinerNameBytes, err := session.Decrypt(s)
+	if err != nil {
+		// Token mismatch causes AEAD decryption failure.
+		// Log as "invalid invite code" without leaking protocol details.
+		log.Printf("Invalid invite code from %s", remotePeerStr[:16])
+		return "", false
+	}
+	joinerName := string(joinerNameBytes)
+
+	// Authorize the joiner
+	comment := joinerName
+	if comment == "" {
+		comment = "joined-" + time.Now().Format("2006-01-02")
+	}
+	remotePeer := s.Conn().RemotePeer()
+	if err := auth.AddPeer(authKeysPath, remotePeer.String(), comment); err != nil {
+		if !strings.Contains(err.Error(), "already authorized") {
+			log.Printf("Failed to authorize peer: %v", err)
+			session.WriteEncrypted(s, []byte("ERR server error"))
+			return "", false
+		}
+	}
+
+	// Send encrypted response: "OK <inviter_name>"
+	response := "OK " + inviterName
+	if err := session.WriteEncrypted(s, []byte(response)); err != nil {
+		log.Printf("v2: failed to send response: %v", err)
+		return "", false
+	}
+
+	// Allow the response to flush through the relay circuit
+	time.Sleep(2 * time.Second)
+
+	return joinerName, true
+}
+
+// handleInviteV1 processes a v1 cleartext handshake on the invite stream.
+// The first byte has already been read (it's the first char of the token hex).
+// Returns the joiner's name and whether authorization succeeded.
+func handleInviteV1(s network.Stream, firstByte byte, token [8]byte, inviterName, remotePeerStr, authKeysPath string) (string, bool) {
+	// v1: first byte is part of the hex token. Read the rest of the line.
+	scanner := bufio.NewScanner(s)
+	scanner.Buffer(make([]byte, 512), 512)
+	if !scanner.Scan() {
+		log.Printf("Invite stream read error: %v", scanner.Err())
+		s.Write([]byte("ERR read error\n"))
+		return "", false
+	}
+	// Prepend the first byte we already read
+	line := string(firstByte) + scanner.Text()
+	parts := strings.SplitN(strings.TrimSpace(line), " ", 2)
+	receivedToken := parts[0]
+	joinerName := ""
+	if len(parts) > 1 {
+		joinerName = parts[1]
+	}
+
+	// Verify token
+	expectedHex := hex.EncodeToString(token[:])
+	if receivedToken != expectedHex {
+		log.Printf("Invalid token from %s", remotePeerStr[:16])
+		s.Write([]byte("ERR invalid token\n"))
+		return "", false
+	}
+
+	// Add joiner to authorized_keys
+	comment := joinerName
+	if comment == "" {
+		comment = "joined-" + time.Now().Format("2006-01-02")
+	}
+	remotePeer := s.Conn().RemotePeer()
+	if err := auth.AddPeer(authKeysPath, remotePeer.String(), comment); err != nil {
+		if !strings.Contains(err.Error(), "already authorized") {
+			log.Printf("Failed to authorize peer: %v", err)
+			s.Write([]byte("ERR server error\n"))
+			return "", false
+		}
+	}
+
+	// Send confirmation: OK <inviter_name>\n
+	s.Write([]byte(fmt.Sprintf("OK %s\n", inviterName)))
+
+	// Allow the response to flush through the relay circuit
+	time.Sleep(2 * time.Second)
+
+	return joinerName, true
 }
