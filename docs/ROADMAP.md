@@ -210,7 +210,7 @@ $ peerup relay remove /ip4/203.0.113.50/tcp/7777/p2p/12D3KooW...
 | G | **Test Coverage & Documentation** | 80.3% combined coverage, Docker integration tests, relay merge, engineering journal, website | ✅ DONE |
 | H | **Observability** | Prometheus metrics, libp2p built-in metrics, custom peerup metrics, audit logging, Grafana dashboard | ✅ DONE |
 | Pre-I-a | **Build & Deployment Tooling** | Makefile, service install (systemd/launchd), generic local checks runner | ✅ DONE |
-| Pre-I-b | **PAKE-Secured Invite/Join** | SPAKE2/CPace handshake, relay-resistant pairing, documentation clarity | ⬜ PLANNED |
+| Pre-I-b | **PAKE-Secured Invite/Join** | Ephemeral DH + token-bound AEAD, relay-resistant pairing, v2 invite codes | ✅ DONE |
 | Pre-I-c | **Private DHT Networks** | Configurable DHT namespace for isolated peer groups (gaming, family, org) | ✅ DONE |
 
 **Deliverables**:
@@ -302,28 +302,29 @@ Makefile + service management + generic local checks runner. Small standalone ta
 - [x] Clear messaging when elevated permissions required (no silent `sudo`)
 - [x] `.checks` file documented in README (generic mechanism, user creates their own patterns)
 
-**Pre-Batch I-b: PAKE-Secured Invite/Join Handshake** ⬜ PLANNED
+**Pre-Batch I-b: PAKE-Secured Invite/Join Handshake** ✅ DONE
 
-Upgrade the invite/join token exchange from cleartext to a PAKE (Password-Authenticated Key Exchange) protocol, inspired by WPA3's SAE (Simultaneous Authentication of Equals). The current flow already auto-authorizes both sides, but the token travels as hex over the stream where the relay can observe it. PAKE ensures even a malicious relay learns nothing about the invite code.
+Upgraded the invite/join token exchange from cleartext to an encrypted handshake inspired by WPA3's SAE. The relay now sees only opaque encrypted bytes during pairing. Zero new dependencies.
 
-Current state: The invite/join protocol already works seamlessly (8-byte crypto token, single-use, 10min TTL, bidirectional auto-authorization). This batch upgrades security, not functionality.
+Approach: Ephemeral X25519 DH + token-bound HKDF-SHA256 key derivation + XChaCha20-Poly1305 AEAD encryption. All Go PAKE libraries evaluated were experimental/unmaintained; this approach uses only `crypto/ecdh` (stdlib), `golang.org/x/crypto/hkdf`, and `golang.org/x/crypto/chacha20poly1305` (already in dep tree).
 
-- [ ] Replace cleartext token exchange with PAKE (SPAKE2 or CPace) - both sides prove knowledge of the invite code without transmitting it
-- [ ] Evaluate Go PAKE libraries: `golang.org/x/crypto` (if available), `github.com/cretz/gopaque`, or implement SPAKE2 directly (well-specified, ~200 lines)
-- [ ] Derive session key from PAKE output - encrypt the peer ID exchange that follows
-- [ ] Backward compatibility: version byte in invite code (currently `0x01`) bumps to `0x02` for PAKE-enabled codes. Old versions rejected with clear upgrade message
-- [ ] Update invite code format: may need larger token (PAKE parameters vs 8-byte random)
-- [ ] Documentation: update website and docs to clearly explain that invite/join is fully automatic (no manual peer ID exchange needed). Current docs create confusion about this
-- [ ] Blog post: explain the WPA3/SAE inspiration and why PAKE matters for relay-mediated pairing
-- [ ] ADR documenting the PAKE protocol choice and threat model (relay-as-adversary)
-- [ ] Tests: PAKE handshake success, token mismatch rejection, replay resistance, relay-can't-learn-token verification
+- [x] Replace cleartext token exchange with encrypted handshake: both sides prove knowledge of the invite code without transmitting it
+- [x] Ephemeral X25519 key exchange with token-bound HKDF key derivation
+- [x] XChaCha20-Poly1305 AEAD encryption for all messages after key exchange
+- [x] Backward compatibility: version byte 0x02 triggers PAKE handshake, 0x01 uses legacy cleartext. Stream handler auto-detects based on first byte
+- [x] v2 invite code format: includes namespace field for DHT network auto-inheritance
+- [x] Future version detection: v3+ codes rejected with "please upgrade peerup" message
+- [x] Joiner auto-inherits inviter's DHT namespace from v2 invite code
+- [x] ADR-Ib01 (DH + AEAD over formal PAKE) and ADR-Ib02 (invite code versioning)
+- [x] Tests: 19 PAKE tests (handshake, token mismatch, tampered ciphertext, oversized message, io.Pipe simulation, key confirmation MAC, EOF handling) + 11 invite code tests (v1/v2 round-trip, namespace, future version, trailing junk)
 
 Security model after upgrade:
-- Invite code = shared secret, never transmitted
-- PAKE proves mutual knowledge without revelation
-- Derived session key encrypts peer ID exchange
-- Relay sees encrypted bytes only - no token, no peer IDs
+- Invite code = shared secret, never transmitted over the wire
+- Ephemeral DH + token binding proves mutual knowledge without revelation
+- Derived AEAD key encrypts all peer name exchange
+- Relay sees only ephemeral public keys + encrypted bytes: no token, no peer names
 - Single-use + TTL + transport-layer identity verification unchanged
+- If tokens differ, AEAD decryption fails with no protocol details leaked
 
 **Pre-Batch I-c: Private DHT Networks** ✅ DONE
 
@@ -1176,7 +1177,7 @@ This roadmap is a living document. Phases may be reordered, combined, or adjuste
 ---
 
 **Last Updated**: 2026-02-21
-**Current Phase**: 4C Complete (Batches A-H + Pre-Batch H all shipped). Pre-I-a (Makefile) and Pre-I-c (Private DHT) done. Pre-I-b (PAKE) in progress.
+**Current Phase**: 4C Complete (Batches A-H + all Pre-I items shipped). Pre-I-a (Makefile), Pre-I-b (PAKE), Pre-I-c (Private DHT) all done.
 **Phase count**: 4C-4I (7 phases, down from 9 - file sharing and service templates merged into plugin architecture)
-**Next Milestone**: Pre-Batch I-b (PAKE invite/join) → Batch I (Adaptive Path Selection)
+**Next Milestone**: Batch I (Adaptive Path Selection)
 **Relay elimination**: Planned post-Batch H - `require_auth` peer relays → DHT discovery → VPS becomes obsolete

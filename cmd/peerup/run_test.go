@@ -1210,7 +1210,7 @@ func TestLoadOrCreateConfig_ExistingConfig(t *testing.T) {
 	var configDir string
 	var created bool
 	code, exited := captureExit(func() {
-		cfgFile, cfg, configDir, created = loadOrCreateConfig(cfgPath, "")
+		cfgFile, cfg, configDir, created = loadOrCreateConfig(cfgPath, "", "")
 	})
 	if exited {
 		t.Fatalf("should not have exited, got code=%d", code)
@@ -1243,7 +1243,7 @@ func TestLoadOrCreateConfig_InvalidConfig(t *testing.T) {
 	os.WriteFile(cfgPath, []byte("this: is: bad: yaml: [[["), 0600)
 
 	code, exited := captureExit(func() {
-		loadOrCreateConfig(cfgPath, "")
+		loadOrCreateConfig(cfgPath, "", "")
 	})
 	if !exited || code != 1 {
 		t.Errorf("expected exit(1) for invalid config, got exited=%v code=%d", exited, code)
